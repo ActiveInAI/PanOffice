@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true,
+    "paths": {
+      "@genoffice/agent-core": ["../desktop/packages/agent-core/src/index.ts"],
+      "@genoffice/ai-provider": ["../desktop/packages/ai-provider/src/index.ts"],
+      "@genoffice/docx-engine": ["../desktop/packages/docx-engine/src/index.ts"],
+      "@genoffice/i18n": ["../desktop/packages/i18n/src/index.ts"],
+      "@genoffice/pptx-engine": ["../desktop/packages/pptx-engine/src/index.ts"],
+      "@genoffice/pptx-engine/table-grid": ["../desktop/packages/pptx-engine/src/table-grid.ts"],
+      "@genoffice/pptx-engine/src/smartart-layout": ["../desktop/packages/pptx-engine/src/smartart-layout.ts"],
+      "@genoffice/pptx-render": ["../desktop/packages/pptx-render/src/index.ts"],
+      "@genoffice/project-store": ["../desktop/packages/project-store/src/index.ts"],
+      "@genoffice/ui": ["../desktop/packages/ui/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+}

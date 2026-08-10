@@ -1,0 +1,29 @@
+{
+  "name": "@panoffice/wopi-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WOPI host bridging Collabora Online to a local file store (PanOffice dev host)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "jose": "^6.2.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.23",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,34 @@
+name: panoffice
+
+services:
+  wopi-host:
+    build: ../server/wopi-host
+    image: panoffice/wopi-host:dev
+    environment:
+      PORT: "3000"
+      DATA_DIR: /data/files
+      WOPI_TOKEN: ${WOPI_TOKEN:-devtoken}
+      # coolwsd reaches the WOPI host over the compose network...
+      WOPI_PUBLIC_BASE: http://wopi-host:3000
+      COLLABORA_INTERNAL_URL: http://collabora:9980
+      # ...while the user's browser reaches both via localhost.
+      # (9981 on the host: 9980 is taken by the pre-existing collabora-code container.)
+      COLLABORA_PUBLIC_URL: ${COLLABORA_PUBLIC_URL:-http://localhost:9981}
+    volumes:
+      - ./data/files:/data/files
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  collabora:
+    image: collabora/code:latest
+    environment:
+      # WOPI host allowlist: must match the WOPISrc origin above.
+      aliasgroup1: http://wopi-host:3000
+      username: admin
+      password: ${COLLABORA_ADMIN_PASSWORD:-panoffice-dev}
+      extra_params: --o:ssl.enable=false --o:ssl.termination=false --o:welcome.enable=false
+    ports:
+      # host port 9981: 9980 is already bound by the pre-existing collabora-code container
+      - "127.0.0.1:9981:9980"
+    depends_on:
+      - wopi-host

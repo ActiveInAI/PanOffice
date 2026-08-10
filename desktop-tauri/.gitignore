@@ -1,0 +1,3 @@
+# Rust build output of the sheets xlsx sidecar (rebuild with
+# `cargo build --release --manifest-path native/xlsx-engine/Cargo.toml`)
+native/xlsx-engine/target
