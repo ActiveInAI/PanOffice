@@ -136,7 +136,7 @@ test('open, edit, save, reload — marker persists in the xlsx bytes', async ({ 
   // write. The completion signal is the saved bytes landing in the byte-store
   // (the status bar's "Saved …" is transient — the post-save workbook reload
   // overwrites it).
-  await page.getByRole('button', { name: 'Save (⌘S)' }).click()
+  await page.getByRole('button', { name: /^(Save \(⌘S\)|保存（⌘S）)$/ }).click()
   let b64: string | null = null
   await expect
     .poll(

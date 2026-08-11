@@ -184,12 +184,17 @@ button {
 
 .file-tab-wrap {
   position: relative;
+  anchor-name: --file-menu;
+  anchor-scope: --file-menu;
 }
 
-.file-menu {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
+.ribbon-tabs .file-tab-wrap > .file-menu {
+  position: fixed;
+  position-anchor: --file-menu;
+  top: calc(anchor(bottom) + 2px);
+  left: anchor(left);
+  position-try-fallbacks: flip-inline;
+  position-visibility: anchors-visible;
   z-index: 60;
   min-width: 210px;
   background: var(--surface);
@@ -267,15 +272,14 @@ button {
   box-shadow: 0 2px 6px rgba(74, 92, 255, 0.25);
 }
 
-/* Genspark brand logo (Ribbon AI button and AI panel title) */
-.genspark-badge {
+/* PanAI brand logo (Ribbon AI button and AI panel title) */
+.panai-mark {
   display: block;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
 }
 
-.ai-panel-title .genspark-badge {
+.ai-panel-title .panai-mark {
   width: 18px;
   height: 18px;
 }
@@ -437,7 +441,7 @@ button {
   background: var(--active-bg);
 }
 
-/* The Genspark AI entry keeps a black label even while the panel is open. */
+/* The PanAI entry keeps a black label even while the panel is open. */
 .rb-big.ai-entry.active {
   color: var(--text);
 }
@@ -457,7 +461,7 @@ button {
   background: var(--hover);
 }
 
-/* Neutral gray, not the Word-blue --active-bg: the Genspark entry is the same
+/* Neutral gray, not the Word-blue --active-bg: the PanAI entry is the same
    control across docs/sheets/slides, so its open state matches their ribbons. */
 .rb-big.ai-entry.active {
   background: #e2e0de;
@@ -892,7 +896,7 @@ button {
 }
 
 /* line spacing dropdown */
-/* Home-tab Genspark AI entry: black circular "+" badge with a dropdown caret,
+/* Home-tab PanAI entry: black circular "+" badge with a dropdown caret,
    brand label below (mirrors the sheets Home ribbon). */
 /* AI feature buttons next to the entry: purple glyphs, label below */
 .ai-feature-icon {

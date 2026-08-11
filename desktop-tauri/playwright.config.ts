@@ -32,7 +32,7 @@ export default defineConfig({
     {
       // wopi-host serving deploy/data/files (the pdf-web spec writes through it)
       command:
-        'PORT=3210 DATA_DIR=../deploy/data/files WOPI_PUBLIC_BASE=http://127.0.0.1:3210 COLLABORA_INTERNAL_URL=http://127.0.0.1:9982 COLLABORA_PUBLIC_URL=http://127.0.0.1:9982 WOPI_ALLOW_DEV_TOKEN=true PDF_APP_URL=http://localhost:4180 node ../server/wopi-host/dist/index.js',
+        'PORT=3210 DATA_DIR=../deploy/data/files WOPI_PUBLIC_BASE=http://127.0.0.1:3210 COLLABORA_INTERNAL_URL=http://127.0.0.1:9982 COLLABORA_PUBLIC_URL=http://127.0.0.1:9982 WOPI_ALLOW_DEV_TOKEN=true WOPI_DEV_UI_ENABLED=true PDF_APP_URL=http://localhost:4180 node ../server/wopi-host/dist/index.js',
       port: 3210,
       reuseExistingServer: true,
       timeout: 30_000,

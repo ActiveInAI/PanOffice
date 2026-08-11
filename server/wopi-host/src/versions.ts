@@ -53,6 +53,9 @@ export class VersionStore {
 
   /** Archive the current bytes of `p` (if any) before they are overwritten. */
   async archiveBeforeWrite(fileId: string, p: string): Promise<void> {
+    // cap <= 0 is the production "latest only" mode: do not create an
+    // archive directory or retain prior document bytes.
+    if (this.cap <= 0) return
     let st
     try {
       st = await stat(p)

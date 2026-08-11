@@ -114,6 +114,13 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
 
 const basename = (path: string): string => path.split(/[\\/]/).pop() ?? path
 
+/** Display name for a path or URL: basename minus query; a WOPI …/<name>/contents?… URL yields <name>. */
+const displayName = (path: string): string => {
+  const parts = (path.split(/[?#]/)[0] ?? '').split(/[\\/]/).filter((p) => p.length > 0)
+  const last = parts[parts.length - 1] ?? basename(path)
+  return last === 'contents' && parts.length >= 2 ? (parts[parts.length - 2] ?? last) : last
+}
+
 const extOf = (name: string): string => name.split('.').pop()?.toLowerCase() ?? ''
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -168,7 +175,8 @@ function pushRecent(path: string): void {
 const docWritablePaths = new Set<string>()
 
 async function loadDocx(path: string): Promise<OpenFileResult | null> {
-  if (typeof path !== 'string' || !/\.docx$/i.test(path)) return null
+  // Remote WOPI contents URLs carry the extension mid-path: /wopi/files/<name>.docx/contents?access_token=…
+  if (typeof path !== 'string' || !/\.docx([/?#]|$)/i.test(path)) return null
   try {
     const bytes = await platform.readFile(path)
     const hash = await sha256Hex(bytes)
@@ -177,7 +185,7 @@ async function loadDocx(path: string): Promise<OpenFileResult | null> {
     // TODO(M3): crash-recovery restore prompt — upstream compares the recovery
     // copy's mtime against the original and offers Restore/Discard; the overlay
     // tracks no mtimes and the dialog is native.
-    return { path, name: basename(path), data: toArrayBuffer(bytes), hash }
+    return { path, name: displayName(path), data: toArrayBuffer(bytes), hash }
   } catch {
     return null
   }
@@ -593,7 +601,7 @@ type DocsLang = 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'th' | 'id' | '
 
 function getLanguage(): Promise<DocsLang> {
   const stored = localStorage.getItem(LANG_KEY)
-  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as DocsLang) : 'en'
+  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as DocsLang) : 'zh'
   return Promise.resolve(lang)
 }
 

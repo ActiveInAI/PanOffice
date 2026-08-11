@@ -50,9 +50,9 @@ import { AnimPreviewOverlay } from './components/AnimatedSlide'
 import { EquationDialog, HeaderFooterDialog, LinkDialog } from './components/InsertDialogs'
 import { CutoutDialog } from './components/CutoutDialog'
 import type { ChartPresetDef, IconDef, SmartArtDef, WordArtPreset } from './insert-presets'
-import { GensparkMark, IconAiBeautify, IconAiFactCheck, IconAiImage } from './components/icons'
 import { t, useI18n } from './i18n/locale'
 import { AiPanel } from './ai/AiPanel'
+import { pickAndOpenOfficeFile } from '../../../open-office-file'
 import { ChartDataDialog } from './components/ChartDataDialog'
 import type { BrushFormat } from './format-brush'
 import { isTextUndoTarget, shouldRouteUndoToDeck } from './undo-routing'
@@ -562,9 +562,8 @@ export function App() {
   )
 
   const openDialog = useCallback(async () => {
-    const r = await window.slidesApi.openPptx(FIT_WIDTH)
-    applyOpen(r)
-  }, [applyOpen])
+    await pickAndOpenOfficeFile()
+  }, [])
 
   // Save/export flows live in file-actions.ts; the editing-active flag lets ⌘S wait for the edit overlay to commit
   const editingActiveRef = useRef(false)
@@ -2089,7 +2088,7 @@ export function App() {
   const _fileName = slide ? path?.split('/').pop() || t('appUntitledPresentation') : undefined
 
   return (
-    <div className="app">
+    <div className="app slides-app">
       <Ribbon
         hasDoc={!!slide}
         deckEmpty={deckEmpty}
@@ -2345,9 +2344,12 @@ export function App() {
           </div>
         ) : (
           <>
-            <div className={`ai-dock${showAi && aiSettings ? '' : ' collapsed'}`}>
+            <div
+              className={`ai-dock${showAi && aiSettings ? '' : ' collapsed'}`}
+              data-testid="panai-dock"
+            >
               {/* always mounted once settings load: collapse must not drop state or in-flight runs */}
-              {aiSettings ? (
+              {aiSettings && (
                 <AiPanel
                   key={aiPanelKey}
                   slides={slides}
@@ -2361,8 +2363,6 @@ export function App() {
                   settings={aiSettings}
                   preset={aiPreset}
                   open={showAi}
-                  onExpand={toggleAi}
-                  onCollapse={toggleAi}
                   onUndo={() => void undo()}
                   onPathChange={(p) => {
                     setPath(p)
@@ -2370,10 +2370,6 @@ export function App() {
                   }}
                   currentFilePath={path}
                 />
-              ) : (
-                <button className="ai-rail" onClick={toggleAi} title={t('appAiRailExpand')}>
-                  <GensparkMark size={22} />
-                </button>
               )}
             </div>
             {viewMode === 'outline' ? (
@@ -2525,49 +2521,6 @@ export function App() {
                     scaleBox ? { width: scaleBox.w * zoom, height: scaleBox.h * zoom } : undefined
                   }
                 >
-                  <div className="stage-ai-bar">
-                    <button
-                      className={`stage-ai-btn${showAi ? ' active' : ''}`}
-                      title={t('aiOpenAssistant')}
-                      onClick={toggleAi}
-                    >
-                      <GensparkMark size={14} />
-                      <span>Genspark AI</span>
-                    </button>
-                    {/* Same one-click presets as the Home tab; hidden instead of
-                        disabled while the deck has no real content */}
-                    {!deckEmpty && (
-                      <>
-                        <span className="stage-ai-divider" aria-hidden="true" />
-                        <button
-                          className="stage-ai-btn"
-                          title={t('aiBeautifyPrompt')}
-                          onClick={() =>
-                            pushAiPreset(t('aiBeautifyPrompt'), true, undefined, undefined, true)
-                          }
-                        >
-                          <IconAiBeautify size={14} />
-                          <span>{t('aiBeautifyBtn')}</span>
-                        </button>
-                        <button
-                          className="stage-ai-btn"
-                          title={t('aiFactCheckPrompt')}
-                          onClick={() => pushAiPreset(t('aiFactCheckPrompt'))}
-                        >
-                          <IconAiFactCheck size={14} />
-                          <span>{t('aiFactCheckBtn')}</span>
-                        </button>
-                        <button
-                          className="stage-ai-btn"
-                          title={t('aiImagePrompt')}
-                          onClick={() => pushAiPreset(t('aiImagePrompt'))}
-                        >
-                          <IconAiImage size={14} />
-                          <span>{t('aiImageBtn')}</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
                   <div
                     ref={stageScaleRef}
                     className="stage-scale"

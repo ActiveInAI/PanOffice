@@ -31,6 +31,8 @@ keys and put TLS in front**. See
 | `GET /` | dev index page (file list + edit links + token chooser when several dev tokens exist) |
 | `GET /edit/:id` | dev page iframing Collabora (`?token=` overrides the embedded token) |
 | `GET /healthz` | liveness |
+| `GET /panai/config` | Public, secret-free PanAI availability and server-selected model |
+| `POST /panai/turn` | Same-origin PanAI turn; credentials and model selection stay server-side |
 
 All `/wopi/*` routes require a valid token via `?access_token=` or
 `Authorization: Bearer`.
@@ -87,6 +89,14 @@ enabled in `coolwsd.xml`; with it disabled the validator cannot pass
 | `COLLABORA_PUBLIC_URL` | = internal | origin the **browser** uses for the Collabora iframe |
 | `PDF_APP_URL` | `http://localhost:4180` | base URL of the PanOffice web shell; `.pdf` files on the index page link there (`edit in PanOffice PDF`), not to Collabora |
 | `PDF_APP_ORIGIN` | = `PDF_APP_URL` | origin allowed cross-origin on `/wopi/*` (CORS) for the web PDF editor |
+| `PANAI_BRIDGE_URL` | — | loopback-only OpenAI-compatible bridge base URL, e.g. `http://127.0.0.1:8790/v1` |
+| `PANAI_BRIDGE_TOKEN_FILE` | — | absolute path to the server-only bearer token (prefer a systemd credential) |
+| `PANAI_MODEL` | `gpt-5.6-sol` | model forced for Word, Excel, PowerPoint, and PDF PanAI turns |
+
+The browser never receives `PANAI_BRIDGE_TOKEN_FILE` or its contents. Hosted
+editors discover only `{ enabled, model }` from `/panai/config`, then send a
+tool-capable Office prompt to `/panai/turn`. The production user-service
+drop-in is `deploy/systemd/panoffice-wopi.service.d/30-panai-bridge.conf`.
 
 ### Web-side PDF editing
 

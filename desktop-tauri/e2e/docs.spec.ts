@@ -31,10 +31,10 @@ test('open, edit, save, reload — marker persists in the docx bytes', async ({ 
   await expect(editor).toContainText(MARKER)
 
   // Ctrl+S → renderer save pipeline → docx-engine patch → bridge write.
-  // Completion signal: the status bar shows "Saved" (bridge default lang en)
+  // Completion signal: the localized status bar reports that the file is saved
   // after the save reloaded the editor from the persisted bytes.
   await page.keyboard.press('Control+s')
-  await expect(page.locator('.status-msg')).toContainText('Saved', { timeout: 30_000 })
+  await expect(page.locator('.status-msg')).toContainText(/Saved|已保存/, { timeout: 30_000 })
   await expect(editor).toContainText(MARKER, { timeout: 30_000 })
 
   // Full page reload: the editor must reopen from persisted state (IDB overlay)

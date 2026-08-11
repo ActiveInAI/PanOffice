@@ -1,0 +1,9 @@
+PanOffice
+Copyright 2026 ActiveInAI
+
+PanOffice incorporates GenOffice-derived components distributed under the
+Apache License 2.0. The original GenOffice notices and license are preserved
+in desktop/NOTICE and desktop/LICENSE.
+
+Collabora Online is a separate network service distributed under the Mozilla
+Public License 2.0. Its source code is not included in this repository.

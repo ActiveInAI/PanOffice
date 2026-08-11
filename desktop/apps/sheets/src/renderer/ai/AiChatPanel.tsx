@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { AiComposer, AiTypingIndicator } from '@genoffice/ui'
-import { GensparkMark } from '../ribbon-icons'
+import { PanAiMark } from '../ribbon-icons'
 import type { ChangePlan } from '../../domain/workbook.types'
 import type { AttachmentMeta } from '../../shared/desktop-api'
 import { useI18n, type TFunc } from '../i18n/locale'
@@ -148,7 +148,7 @@ export function AiChatPanel({
     }
   }, [chat, preview])
 
-  /** Drag the right edge to resize: the panel is flush with the window's left edge, so width = clientX; the grid transition is disabled while dragging */
+  /** Drag the left edge to resize the right-docked panel; the grid transition is disabled while dragging. */
   const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
     const area = asideRef.current?.closest('.sheet-body') as HTMLElement | null
@@ -157,9 +157,10 @@ export function AiChatPanel({
     area.style.transition = 'none'
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    const rightEdge = area.getBoundingClientRect().right
     let width = 0
     const onMove = (ev: PointerEvent): void => {
-      width = clampPanelWidth(ev.clientX)
+      width = clampPanelWidth(rightEdge - ev.clientX)
       area.style.setProperty('--copilot-width', `${width}px`)
     }
     const onUp = (): void => {
@@ -185,7 +186,7 @@ export function AiChatPanel({
     return (
       <aside className="copilot collapsed">
         <button className="expand-copilot" onClick={onExpand} title={t('aiOpenAssistant')}>
-          <GensparkMark size={22} />
+          <PanAiMark size={22} />
         </button>
       </aside>
     )
@@ -242,16 +243,17 @@ export function AiChatPanel({
       onDrop={onDrop}
     >
       <div
-        className="ai-panel-resizer"
+        className="ai-panel-resizer notranslate"
+        translate="no"
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark"
+        aria-label="PanAI"
       />
       <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <GensparkMark size={22} />
-          Genspark
+        <span className="ai-panel-title notranslate" translate="no">
+          <PanAiMark size={22} />
+          PanAI
         </span>
         <div className="ai-panel-header-actions">
           {(chat.length > 0 || historicChat.length > 0) && (

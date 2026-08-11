@@ -6,8 +6,11 @@ import type { PdfApi } from '../shared/ipc'
 
 const api: PdfApi = {
   consumePending: () => ipcRenderer.invoke(PDF_CHANNELS.consumePending),
+  openFile: () => ipcRenderer.invoke(PDF_CHANNELS.openFile),
   readFile: (path) => ipcRenderer.invoke(PDF_CHANNELS.readFile, path),
   save: (request) => ipcRenderer.invoke(PDF_CHANNELS.save, request),
+  saveAs: (request, suggestedName) =>
+    ipcRenderer.invoke(PDF_CHANNELS.saveAs, request, suggestedName),
   extractPages: (request) => ipcRenderer.invoke(PDF_CHANNELS.extractPages, request),
   insertPdf: (request) => ipcRenderer.invoke(PDF_CHANNELS.insertPdf, request),
   exportImages: (request) => ipcRenderer.invoke(PDF_CHANNELS.exportImages, request),

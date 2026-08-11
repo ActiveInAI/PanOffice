@@ -9,7 +9,7 @@ import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
 import { createPdfSkill } from './pdf-skill'
-import { createDirectTransport } from './transport'
+import { createPdfTransport } from './transport'
 import type { PdfAiDeps } from './tools'
 
 const PANEL_WIDTH_KEY = 'pdf-ai-panel-width'
@@ -44,13 +44,7 @@ interface ChatEntry {
 
 type Phase = 'thinking' | 'replying' | 'working'
 
-export function AiPanel({
-  api,
-  onCollapse,
-}: {
-  api: PdfAiDeps
-  onCollapse: () => void
-}): ReactElement {
+export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
   const { lang, t } = useI18n()
   const [chat, setChat] = useState<ChatEntry[]>([])
   const [prompt, setPrompt] = useState('')
@@ -79,7 +73,10 @@ export function AiPanel({
       const next = [...prev]
       const last = next[next.length - 1]
       if (!last || last.role !== 'assistant') return prev
-      next[next.length - 1] = { ...last, ...(typeof patch === 'function' ? patch(last) : patch) }
+      next[next.length - 1] = {
+        ...last,
+        ...(typeof patch === 'function' ? patch(last) : patch),
+      }
       return next
     })
   }
@@ -104,7 +101,7 @@ export function AiPanel({
       deletePage: (idx) => apiRef.current.deletePage(idx),
     }
     loopRef.current = new AgentLoop({
-      transport: createDirectTransport(() => settingsRef.current!),
+      transport: createPdfTransport(() => settingsRef.current!),
       skill: createPdfSkill(deps),
       systemSuffix: () => aiLangDirective(langRef.current),
       events: {
@@ -154,7 +151,12 @@ export function AiPanel({
             }
             const last = next.at(-1)
             if (last?.role === 'assistant') {
-              next[next.length - 1] = { ...last, streaming: false, text: error, isError: true }
+              next[next.length - 1] = {
+                ...last,
+                streaming: false,
+                text: error,
+                isError: true,
+              }
             }
             return next
           })
@@ -243,6 +245,7 @@ export function AiPanel({
   return (
     <aside
       ref={asideRef}
+      data-testid="panai-panel"
       className={`copilot${resizing ? ' ai-panel-resizing' : ''}`}
       style={{ width: '100%' }}
     >
@@ -251,33 +254,22 @@ export function AiPanel({
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="PanOffice"
+        aria-label="PanAI"
       />
-      <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <PanofficeMark size={22} />
-          PanOffice
-        </span>
-        <div className="ai-panel-header-actions">
-          {chat.length > 0 && (
-            <button
-              className="ai-header-btn"
-              onClick={() => {
-                stop()
-                loopRef.current?.reset()
-                setBusy(false)
-                setChat([])
-              }}
-              title={t('aiNewChat')}
-            >
-              <IconNewChat />
-            </button>
-          )}
-          <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapsePanel')}>
-            <IconCollapse />
-          </button>
-        </div>
-      </header>
+      {chat.length > 0 && (
+        <button
+          className="ai-panel-utility"
+          onClick={() => {
+            stop()
+            loopRef.current?.reset()
+            setBusy(false)
+            setChat([])
+          }}
+          title={t('aiNewChat')}
+        >
+          <IconNewChat />
+        </button>
+      )}
 
       <div className="ai-chat" ref={chatRef} onScroll={onChatScroll}>
         {chat.length === 0 && (
@@ -512,32 +504,10 @@ function IconNewChat(): ReactElement {
   )
 }
 
-/* Same glyph as the slides IconSidebarCollapse (24×24 viewBox, 1.5 stroke), rendered at 15px */
-function IconCollapse(): ReactElement {
-  return (
-    <svg
-      width={15}
-      height={15}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      {/* Mirrored: the AI panel docks on the RIGHT, so the divider and arrow point right */}
-      <rect x="2.25" y="3.75" width="19.5" height="16.5" rx="1.5" />
-      <path d="M15.75 3.75 v16.5" />
-      <path d="M5.25 12 h6.6 M9.3 8.85 12.45 12 l-3.15 3.15" />
-    </svg>
-  )
-}
-
-/** PanOffice brand mark (gold 16-point star, cream center — branding/logo-mark.svg),
+/** PanAI brand mark (gold 16-point star, cream center — branding/logo-mark.svg),
  * inline so it renders crisply at device resolution instead of going through
  * <img> rasterization */
-export function PanofficeMark({ size = 18 }: { size?: number }): React.JSX.Element {
+export function PanAiMark({ size = 18 }: { size?: number }): React.JSX.Element {
   return (
     <svg
       width={size}
@@ -545,6 +515,7 @@ export function PanofficeMark({ size = 18 }: { size?: number }): React.JSX.Eleme
       viewBox="0 0 96 96"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      className="panai-mark"
       aria-hidden
     >
       <polygon

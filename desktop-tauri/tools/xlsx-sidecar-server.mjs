@@ -20,9 +20,9 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
-import { mkdtemp, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createInterface } from 'node:readline'
 
@@ -47,7 +47,10 @@ const PORT = Number(process.env.XLSX_SIDECAR_PORT ?? 8791)
 const SIDECAR_PATH =
   process.env.XLSX_SIDECAR_PATH ??
   join(rootDir, 'native', 'xlsx-engine', 'target', 'release', 'xlsx-sidecar')
-const STAGE_DIR = join(tmpdir(), 'panoffice-xlsx-stage')
+const STAGE_DIR = resolve(
+  process.env.XLSX_SIDECAR_STAGE_DIR ?? join(tmpdir(), 'panoffice-xlsx-stage'),
+)
+const STAGE_PREFIX = `${STAGE_DIR}${sep}`
 
 // ---- sidecar child (one instance, lazily spawned, respawned after exit) ----
 
@@ -134,54 +137,99 @@ function okResult(result) {
   return { ok: true, result }
 }
 
+async function ensureStageDir() {
+  await mkdir(STAGE_DIR, { recursive: true, mode: 0o700 })
+}
+
+function stagedPath(value, label) {
+  if (typeof value !== 'string' || !isAbsolute(value)) {
+    throw new Error(`${label} must be an absolute staged path`)
+  }
+  const candidate = resolve(value)
+  if (candidate === STAGE_DIR || !candidate.startsWith(STAGE_PREFIX)) {
+    throw new Error(`${label} is outside the XLSX staging directory`)
+  }
+  return candidate
+}
+
+const SIDECAR_PATH_FIELDS = new Map([
+  ['open', ['path']],
+  ['archive_manifest', ['path']],
+  ['read_entries', ['path', 'outputDir']],
+  ['scan_entries', ['path']],
+  ['convert_workbook', ['path', 'targetPath']],
+  ['save_archive', ['sourcePath', 'targetPath']],
+  ['recalc_cells', ['path']],
+])
+
+function validateSidecarPaths(envelope) {
+  for (const field of SIDECAR_PATH_FIELDS.get(envelope.command) ?? []) {
+    stagedPath(envelope[field], `${envelope.command}.${field}`)
+  }
+  if (envelope.command !== 'save_archive') return
+  for (const group of ['replacements', 'additions']) {
+    if (!Array.isArray(envelope[group])) throw new Error(`save_archive.${group} must be an array`)
+    for (const entry of envelope[group]) {
+      stagedPath(entry?.contentPath, `save_archive.${group}.contentPath`)
+    }
+  }
+}
+
 const hostCommands = {
   /**
-   * Ensure `path` exists as a real file the sidecar can open. Real on-disk
-   * paths pass through; anything else (vite URL-ish paths, overlay keys) is
-   * staged under a temp dir keyed by the logical path, keeping the basename.
+   * Ensure `path` exists as a real file the sidecar can open. Browser bytes
+   * are always copied into the private staging tree; caller paths never pass
+   * through to the host filesystem.
    */
   async 'host.stage'(args) {
     const logical = args.path
     if (typeof logical !== 'string' || logical.length === 0) {
       throw new Error('host.stage: path must be a non-empty string')
     }
-    if (isAbsolute(logical)) {
-      const info = await stat(logical).catch(() => null)
-      if (info?.isFile()) return okResult({ path: logical })
-    }
+    await ensureStageDir()
     const key = createHash('sha256').update(logical).digest('hex').slice(0, 16)
     const dir = join(STAGE_DIR, key)
-    await mkdir(dir, { recursive: true })
+    await mkdir(dir, { recursive: true, mode: 0o700 })
     const staged = join(dir, basename(logical).replace(/[^\w.-]/g, '_') || 'workbook.xlsx')
-    await writeFile(staged, Buffer.from(String(args.base64 ?? ''), 'base64'))
+    await writeFile(staged, Buffer.from(String(args.base64 ?? ''), 'base64'), { mode: 0o600 })
     return okResult({ path: staged })
   },
   async 'host.mkdtemp'(args) {
-    const prefix = typeof args.prefix === 'string' ? args.prefix : 'panoffice-xlsx-'
-    return okResult({ path: await mkdtemp(join(tmpdir(), prefix)) })
+    await ensureStageDir()
+    const rawPrefix = typeof args.prefix === 'string' ? args.prefix : 'panoffice-xlsx-'
+    const prefix = rawPrefix.replace(/[^\w.-]/g, '_').slice(0, 80) || 'panoffice-xlsx-'
+    return okResult({ path: await mkdtemp(join(STAGE_DIR, prefix)) })
   },
   async 'host.mkdir'(args) {
-    await mkdir(String(args.path), { recursive: true })
+    await mkdir(stagedPath(args.path, 'host.mkdir.path'), { recursive: true, mode: 0o700 })
     return okResult({})
   },
   async 'host.read_text'(args) {
-    return okResult({ text: await readFile(String(args.path), 'utf8') })
+    return okResult({ text: await readFile(stagedPath(args.path, 'host.read_text.path'), 'utf8') })
   },
   async 'host.read_file'(args) {
-    return okResult({ base64: (await readFile(String(args.path))).toString('base64') })
+    return okResult({
+      base64: (await readFile(stagedPath(args.path, 'host.read_file.path'))).toString('base64'),
+    })
   },
   async 'host.write_file'(args) {
-    const path = String(args.path)
+    const path = stagedPath(args.path, 'host.write_file.path')
     if (typeof args.text === 'string') await writeFile(path, args.text, 'utf8')
     else await writeFile(path, Buffer.from(String(args.base64 ?? ''), 'base64'))
     return okResult({})
   },
   async 'host.remove'(args) {
-    await rm(String(args.path), { recursive: args.recursive === true, force: true })
+    await rm(stagedPath(args.path, 'host.remove.path'), {
+      recursive: args.recursive === true,
+      force: true,
+    })
     return okResult({})
   },
   async 'host.rename'(args) {
-    await rename(String(args.from), String(args.to))
+    await rename(
+      stagedPath(args.from, 'host.rename.from'),
+      stagedPath(args.to, 'host.rename.to'),
+    )
     return okResult({})
   },
 }
@@ -229,6 +277,7 @@ async function handleRpc(body) {
       const result = await handler(envelope)
       return { status: 200, body: { version: PROTOCOL_VERSION, requestId, ...result } }
     }
+    validateSidecarPaths(envelope)
     const response = await sidecarRequest(envelope)
     return { status: 200, body: response }
   } catch (error) {

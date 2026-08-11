@@ -24,6 +24,7 @@ import {
 import type { AiSettings, OpenFileResult } from '../shared/ipc'
 import { AI_PROVIDERS } from '../shared/ipc'
 import { AiPanel } from './ai/AiPanel'
+import { pickAndOpenOfficeFile } from '../../../open-office-file'
 import { asianCharCount, countWords, nonAsianWordCount } from './word-count'
 import { toRoman } from './note-format'
 import { CommentsPanel } from './components/CommentsPanel'
@@ -835,8 +836,8 @@ export function App() {
   }, [editor, loadFile])
 
   const openFile = useCallback(async () => {
-    await loadFile(await window.desktop.openDocx())
-  }, [loadFile])
+    await pickAndOpenOfficeFile()
+  }, [])
 
   /** new document from the built-in blank template (AI can then generate into it) */
   const newFile = useCallback(() => newFileImpl(fileCtxRef.current), [])
@@ -2299,7 +2300,7 @@ export function App() {
 
   return (
     <div
-      className={`app ${readMode ? 'read-mode' : ''}${revisionDisplay !== 'all' ? ` rev-display-${revisionDisplay}` : ''}`}
+      className={`app docs-app ${readMode ? 'read-mode' : ''}${revisionDisplay !== 'all' ? ` rev-display-${revisionDisplay}` : ''}`}
     >
       {docCss && <style>{docCss}</style>}
       {doc && liveDocCjk != null && (
@@ -2495,7 +2496,7 @@ export function App() {
 
       <div className={`workspace ${darkCanvas ? 'workspace-dark' : ''}`}>
         {doc && (
-          <div className={`ai-dock${showAi ? '' : ' collapsed'}`}>
+          <div className={`ai-dock${showAi ? '' : ' collapsed'}`} data-testid="panai-dock">
             {/* always mounted: collapse must not drop state or in-flight runs */}
             <AiPanel
               key={aiPanelKey}
@@ -2508,8 +2509,6 @@ export function App() {
               }
               preset={aiPreset}
               open={showAi}
-              onExpand={() => setShowAi(true)}
-              onCollapse={() => setShowAi(false)}
               filePath={doc?.filePath ?? null}
             />
           </div>

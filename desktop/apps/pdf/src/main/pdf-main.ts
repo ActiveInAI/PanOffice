@@ -13,6 +13,8 @@ import type {
   ExtractPagesResult,
   InsertPdfRequest,
   InsertPdfResult,
+  OpenPdfResult,
+  SavePdfAsResult,
   SavePdfRequest,
   SavePdfResult,
 } from '../shared/ipc'
@@ -326,6 +328,25 @@ function registerPdfIpc(): void {
     return path
   })
 
+  ipcMain.handle(PDF_CHANNELS.openFile, async (e): Promise<OpenPdfResult> => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow()
+    const picked = await dialog.showOpenDialog(win!, {
+      title: tm('filterPdf'),
+      filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+      properties: ['openFile'],
+    })
+    const path = picked.filePaths[0]
+    if (picked.canceled || !path) return { ok: true, canceled: true }
+    try {
+      const allowed = allowedByWc.get(e.sender.id) ?? new Set<string>()
+      allowed.add(path)
+      allowedByWc.set(e.sender.id, allowed)
+      return { ok: true, path }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle(PDF_CHANNELS.readFile, async (e, path: unknown) => {
     if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
       throw new Error('pdf: path not granted to this view')
@@ -350,6 +371,33 @@ function registerPdfIpc(): void {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
+
+  ipcMain.handle(
+    PDF_CHANNELS.saveAs,
+    async (e, request: SavePdfRequest, suggestedName: unknown): Promise<SavePdfAsResult> => {
+      const path = request?.path
+      if (typeof path !== 'string' || !allowedByWc.get(e.sender.id)?.has(path)) {
+        return { ok: false, error: 'pdf: path not granted to this view' }
+      }
+      const win = BrowserWindow.fromWebContents(e.sender) ?? BrowserWindow.getFocusedWindow()
+      const picked = await dialog.showSaveDialog(win!, {
+        title: tm('filterPdf'),
+        defaultPath: join(dirname(path), String(suggestedName || 'document.pdf')),
+        filters: [{ name: tm('filterPdf'), extensions: ['pdf'] }],
+      })
+      if (picked.canceled || !picked.filePath) return { ok: true, canceled: true }
+      try {
+        const bytes = await applySaveRequest(new Uint8Array(await readFile(path)), request)
+        await writeFile(picked.filePath, bytes)
+        const allowed = allowedByWc.get(e.sender.id) ?? new Set<string>()
+        allowed.add(picked.filePath)
+        allowedByWc.set(e.sender.id, allowed)
+        return { ok: true, savedPath: picked.filePath }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
 
   ipcMain.handle(
     PDF_CHANNELS.extractPages,

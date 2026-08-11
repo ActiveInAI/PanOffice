@@ -4,7 +4,7 @@ import { defineStrings } from '@genoffice/i18n'
 export const aiStrings = defineStrings({
   zh: {
     aiComposerPlaceholderBuild: '描述要生成的表格、数据或图表…',
-    aiEmptyBuildTitle: '让 AI 帮你从零建表',
+    aiEmptyBuildTitle: '让PanAI帮你从零建表',
     aiEmptyBuildBody: '描述想要的表格、数据或图表，AI 直接生成。',
     aiGskLoginBtn: '登录 Genspark',
     aiUndelivered: '未送达,本条不会生效',
@@ -45,7 +45,7 @@ export const aiStrings = defineStrings({
     aiCellEmpty: '空',
     aiRemoveAttachment: '移除附件',
     aiAttachTitle: '添加本地文件作为附件(也可拖拽到面板)',
-    aiComposerPlaceholder: '让 AI 分析或修改这个工作簿…',
+    aiComposerPlaceholder: '让PanAI分析或修改这个工作簿…',
     aiHintIdle: 'Enter 发送',
     aiHintBusy: 'Esc 停止',
     aiHintIdleTitle: 'Enter 发送 · Shift+Enter 换行',

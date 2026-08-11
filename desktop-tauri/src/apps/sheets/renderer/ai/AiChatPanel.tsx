@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { AiComposer, AiTypingIndicator } from '@genoffice/ui'
-import { GensparkMark } from '../ribbon-icons'
 import type { ChangePlan } from '../../domain/workbook.types'
 import type { AttachmentMeta } from '../../shared/desktop-api'
 import { useI18n, type TFunc } from '../i18n/locale'
@@ -76,8 +75,6 @@ export function AiChatPanel({
   onStop,
   onNewChat,
   onUndo,
-  onExpand,
-  onCollapse,
 }: {
   readonly isOpen: boolean
   /** the workbook has cells with content — empty workbooks get "build me a sheet" copy instead */
@@ -103,9 +100,7 @@ export function AiChatPanel({
   readonly onStop: () => void
   readonly onNewChat: () => void
   readonly onUndo: () => void
-  readonly onExpand: () => void
-  readonly onCollapse: () => void
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const { t } = useI18n()
   const chatRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -148,7 +143,7 @@ export function AiChatPanel({
     }
   }, [chat, preview])
 
-  /** Drag the right edge to resize: the panel is flush with the window's left edge, so width = clientX; the grid transition is disabled while dragging */
+  /** Drag the left edge to resize the right-docked panel; the grid transition is disabled while dragging. */
   const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
     e.preventDefault()
     const area = asideRef.current?.closest('.sheet-body') as HTMLElement | null
@@ -157,9 +152,10 @@ export function AiChatPanel({
     area.style.transition = 'none'
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    const rightEdge = area.getBoundingClientRect().right
     let width = 0
     const onMove = (ev: PointerEvent): void => {
-      width = clampPanelWidth(ev.clientX)
+      width = clampPanelWidth(rightEdge - ev.clientX)
       area.style.setProperty('--copilot-width', `${width}px`)
     }
     const onUp = (): void => {
@@ -181,15 +177,7 @@ export function AiChatPanel({
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
   }
 
-  if (!isOpen) {
-    return (
-      <aside className="copilot collapsed">
-        <button className="expand-copilot" onClick={onExpand} title={t('aiOpenAssistant')}>
-          <GensparkMark size={22} />
-        </button>
-      </aside>
-    )
-  }
+  if (!isOpen) return null
 
   const canSend = prompt.trim().length > 0 && !aiBusy
 
@@ -228,6 +216,7 @@ export function AiChatPanel({
   return (
     <aside
       ref={asideRef}
+      data-testid="panai-panel"
       className={`copilot${dragOver ? ' ai-panel-dragover' : ''}${resizing ? ' ai-panel-resizing' : ''}`}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
@@ -242,28 +231,18 @@ export function AiChatPanel({
       onDrop={onDrop}
     >
       <div
-        className="ai-panel-resizer"
+        className="ai-panel-resizer notranslate"
+        translate="no"
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark"
+        aria-label="PanAI"
       />
-      <header className="ai-panel-header">
-        <span className="ai-panel-title">
-          <GensparkMark size={22} />
-          Genspark
-        </span>
-        <div className="ai-panel-header-actions">
-          {(chat.length > 0 || historicChat.length > 0) && (
-            <button className="ai-header-btn" onClick={onNewChat} title={t('aiNewChat')}>
-              <IconNewChat size={15} />
-            </button>
-          )}
-          <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapsePanel')}>
-            <IconCollapse size={15} />
-          </button>
-        </div>
-      </header>
+      {(chat.length > 0 || historicChat.length > 0) && (
+        <button className="ai-panel-utility" onClick={onNewChat} title={t('aiNewChat')}>
+          <IconNewChat size={15} />
+        </button>
+      )}
 
       <div className="ai-chat" ref={chatRef} onScroll={onChatScroll}>
         {/* Past conversation (read-only transcript), shown continuously with the current turn */}
@@ -482,17 +461,6 @@ function IconNewChat({ size }: { size: number }): React.JSX.Element {
         strokeLinejoin="round"
       />
       <path d="M12.2 9.4v4M10.2 11.4h4" />
-    </Svg>
-  )
-}
-
-function IconCollapse({ size }: { size: number }): React.JSX.Element {
-  // Mirrored glyph: the AI panel docks on the LEFT, so the divider and arrow point left
-  return (
-    <Svg size={size}>
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
-      <path d="M5.5 2.5v11" />
-      <path d="M12.5 8H8.1M9.8 5.9 7.7 8l2.1 2.1" strokeWidth="1.3" strokeLinejoin="round" />
     </Svg>
   )
 }

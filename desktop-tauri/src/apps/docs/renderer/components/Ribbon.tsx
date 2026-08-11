@@ -52,7 +52,7 @@ import {
 import { WRAP_OPTIONS } from './ContextMenu'
 import { CropDialog, CutoutDialog } from './PictureDialogs'
 import {
-  GensparkMark,
+  PanAiMark,
   IconAlignCenter,
   IconAlignJustify,
   IconAlignLeft,
@@ -223,17 +223,23 @@ function transformCase(s: string, mode: 'upper' | 'lower' | 'title' | 'sentence'
   }
 }
 
-// Word for Mac has no File ribbon tab: file actions live in the native menu
-// bar (which we provide). Windows Word does have one, so keep it there.
+// The in-app File menu stays available on every platform; native menus are an
+// additional entry point into the same handlers.
 const IS_MAC = navigator.platform.toLowerCase().includes('mac')
 /** shell tab mode: the tab strip above owns traffic lights / caption buttons */
 const IN_TAB = new URLSearchParams(window.location.search).get('mode') === 'tab'
 
-const TABS = (
-  IS_MAC
-    ? ['home', 'insert', 'draw', 'design', 'layout', 'references', 'review', 'view']
-    : ['file', 'home', 'insert', 'draw', 'design', 'layout', 'references', 'review', 'view']
-) as readonly string[]
+const TABS = [
+  'file',
+  'home',
+  'insert',
+  'draw',
+  'design',
+  'layout',
+  'references',
+  'review',
+  'view',
+] as const
 const TABLE_TABS = ['tableDesign', 'tableLayout'] as const
 const IMAGE_TABS = ['pictureFormat'] as const
 type RibbonTab = (typeof TABS)[number] | (typeof TABLE_TABS)[number] | (typeof IMAGE_TABS)[number]
@@ -1103,8 +1109,7 @@ export function Ribbon({
       <div
         className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}`}
       >
-        {!IS_MAC && (
-          <div className="file-tab-wrap">
+        <div className="file-tab-wrap">
             <button
               className={`ribbon-tab ribbon-tab-file ${dropdown === 'file' ? 'open' : ''}`}
               onClick={() => setDropdown((v) => (v === 'file' ? null : 'file'))}
@@ -1141,8 +1146,7 @@ export function Ribbon({
                 </button>
               </div>
             )}
-          </div>
-        )}
+        </div>
         {quickActions}
         {TABS.filter((tabName) => tabName !== 'file').map((tabName) => (
           <button
@@ -1639,18 +1643,22 @@ export function Ribbon({
           </div>
         ) : tab === 'home' ? (
           <>
-            {/* ---- Genspark AI (first slot: entry + one-click AI actions) ---- */}
+            {/* ---- PanAI (first slot: entry + one-click AI actions) ---- */}
             <div className="ribbon-group">
               <div className="ribbon-group-items">
                 <button
                   className={`rb-big ai-entry ${showAi ? 'active' : ''}`}
                   title={t('aiOpenAssistant')}
+                  aria-pressed={showAi}
+                  data-testid="panai-toggle"
                   onClick={onToggleAi}
                 >
                   <span className="rb-big-icon">
-                    <GensparkMark size={26} />
+                    <PanAiMark size={26} />
                   </span>
-                  <span>Genspark AI</span>
+                  <span className="notranslate" translate="no">
+                    PanAI
+                  </span>
                 </button>
                 <button
                   className="rb-big ai-entry"
@@ -1707,7 +1715,9 @@ export function Ribbon({
                   <span>{t('aiPolishBtn')}</span>
                 </button>
               </div>
-              <div className="ribbon-group-label">Genspark AI</div>
+              <div className="ribbon-group-label notranslate" translate="no">
+                PanAI
+              </div>
             </div>
 
             <div className="ribbon-sep" />

@@ -44,6 +44,26 @@ Upstream references kept outside this repo (in `~/panspace/`):
 
 ## Quick start
 
+### Local development boundary
+
+All PanOffice development runs in this WSL checkout. Start the web shell,
+WOPI host, native XLSX sidecar, local Collabora build, and the local Arch-GPT
+CLI bridge with:
+
+```bash
+./tools/start-services.sh
+# open http://127.0.0.1:5180
+```
+
+The script creates an ignored `.runtime-local/` directory with a new, empty
+file store. It never reads `deploy/data/files`, browser recent-file storage,
+or any directory on `192.168.1.100`. The ARM host is a deployment target only:
+build and test here, then transfer release artifacts only. Never transfer
+runtime file stores, `.versions`, lock files, browser profiles/localStorage,
+or `.runtime-local/`. Development services run as transient user units: they
+survive terminal closure, do not auto-start after a WSL reboot, and can be
+started again with the same command.
+
 Desktop shell (Tauri; Node ≥ 20 + Rust + platform webview deps — see
 `desktop-tauri/README.md`):
 

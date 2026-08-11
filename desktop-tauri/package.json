@@ -8,6 +8,7 @@
   "scripts": {
     "dev:ui": "vite",
     "build:ui": "tsc --noEmit && vite build",
+    "build:web": "tsc --noEmit && vite build --mode web",
     "test": "vitest run",
     "test:e2e": "npm run build:ui && playwright test",
     "fixture:pdf": "node tools/make-fixture.mjs",

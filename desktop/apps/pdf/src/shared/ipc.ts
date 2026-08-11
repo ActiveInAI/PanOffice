@@ -3,8 +3,10 @@ import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-p
 
 export const PDF_CHANNELS = {
   consumePending: 'pdf:consume-pending',
+  openFile: 'pdf:open-file',
   readFile: 'pdf:read-file',
   save: 'pdf:save',
+  saveAs: 'pdf:save-as',
   extractPages: 'pdf:extract-pages',
   insertPdf: 'pdf:insert-pdf',
   exportImages: 'pdf:export-images',
@@ -99,6 +101,12 @@ export interface SavePdfRequest {
 
 export type SavePdfResult = { ok: true } | { ok: false; error: string }
 
+export type OpenPdfResult =
+  { ok: true; path: string } | { ok: true; canceled: true } | { ok: false; error: string }
+
+export type SavePdfAsResult =
+  { ok: true; savedPath: string } | { ok: true; canceled: true } | { ok: false; error: string }
+
 /** Extract pages into a new PDF: main process shows a save dialog; cancel returns canceled */
 export interface ExtractPagesRequest {
   path: string
@@ -146,10 +154,14 @@ export const AI_CHANNELS = {
 export interface PdfApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
+  /** Pick a PDF and grant this renderer access to it. */
+  openFile(): Promise<OpenPdfResult>
   /** Read pdf bytes. Only paths granted to this view are allowed */
   readFile(path: string): Promise<ArrayBuffer>
   /** Write markups/form values/page ops back to the original file (pdf-lib, content streams untouched); path grants same as readFile */
   save(request: SavePdfRequest): Promise<SavePdfResult>
+  /** Write the current document and pending edits to a user-selected new PDF. */
+  saveAs(request: SavePdfRequest, suggestedName: string): Promise<SavePdfAsResult>
   extractPages(request: ExtractPagesRequest): Promise<ExtractPagesResult>
   insertPdf(request: InsertPdfRequest): Promise<InsertPdfResult>
   exportImages(request: ExportImagesRequest): Promise<ExportImagesResult>

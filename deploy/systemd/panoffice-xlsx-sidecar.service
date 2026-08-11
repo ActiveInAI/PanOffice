@@ -1,0 +1,21 @@
+[Unit]
+Description=PanOffice native XLSX sidecar
+After=network-online.target
+Before=panoffice-wopi.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/panspace/panoffice-xlsx-runtime/current/tools/xlsx-sidecar-server.mjs
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target

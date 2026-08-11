@@ -114,6 +114,7 @@ import type { ChangePlan } from '../domain/workbook.types'
 import { createElectronTransport } from './ai/transport'
 import type { ActiveSheetInfo, SheetsSkillDeps } from './ai/tools'
 import type { AiChatMessage } from './ai/AiChatPanel'
+import { pickAndOpenOfficeFile } from '../../../open-office-file'
 import { createWorkbookSkill } from './ai/workbook-skill'
 import { createFilesSkill } from './ai/files-skill'
 import { createSearchSkill } from './ai/search-skill'
@@ -556,6 +557,11 @@ export function App(): React.JSX.Element {
   /** The shell can repeat its queued-open nudge while the renderer starts.
    * Only one picker/open request may own the workbook session at a time. */
   const workbookOpeningRef = useRef(false)
+  /** The first queued open on a `#/sheets?src=...` boot consumes that source;
+   * later File > Open commands use the shared cross-format picker. */
+  const pendingInitialOpenRef = useRef(
+    new URLSearchParams(window.location.hash.split('?')[1] ?? '').has('src'),
+  )
   /** Current session's projectId/chatId (resolved when the workbook opens) */
   const chatRefIdsRef = useRef<{ projectId: string; chatId: string } | null>(null)
 
@@ -2712,16 +2718,19 @@ export function App(): React.JSX.Element {
     if (workbookOpeningRef.current) return
     workbookOpeningRef.current = true
     try {
-      if (!window.desktopApi) {
-        throw new Error(t('appBridgeUnavailable'))
-      }
-      const selected = await window.desktopApi.selectWorkbook()
-      if (!selected) {
-        setMessage(t('appOpenCanceled'))
+      if (pendingInitialOpenRef.current) {
+        pendingInitialOpenRef.current = false
+        if (!window.desktopApi) throw new Error(t('appBridgeUnavailable'))
+        const selected = await window.desktopApi.selectWorkbook()
+        if (!selected) {
+          setMessage(t('appOpenCanceled'))
+          return
+        }
+        openLazyWorkbook(selected)
+        setMessage(t('appOpened', { name: selected.name }))
         return
       }
-      openLazyWorkbook(selected)
-      setMessage(t('appOpened', { name: selected.name }))
+      await pickAndOpenOfficeFile()
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : t('appOpenFailed'))
     } finally {
@@ -2939,7 +2948,9 @@ export function App(): React.JSX.Element {
         onCommand={handleRibbonCommand}
         zoomPercent={zoomPercent}
         canSave={pendingEdits > 0}
+        onOpen={() => void handleInspectWorkbook()}
         onSave={() => void handleSave('save')}
+        onSaveAs={() => void handleSave('save-as')}
         onRedo={handleRedo}
         autoSave={autoSave}
         onAutoSaveChange={setAutoSave}

@@ -18,6 +18,7 @@ const genoffice = (name: string, entry = 'index.ts') =>
 
 // Tauri expects a fixed dev port and no clearing of the screen.
 export default defineConfig({
+  base: process.env.PANOFFICE_WEB_BASE || '/',
   plugins: [
     react(),
     // pdfjs cmaps/standard fonts/wasm, served at /pdfjs/ (see ASSET_BASE in the pdf renderer)
@@ -56,6 +57,13 @@ export default defineConfig({
   server: {
     port: 5180,
     strictPort: true,
+    host: '127.0.0.1',
+    proxy: {
+      // Development stays on this WSL host. The browser sees same-origin
+      // routes while WOPI keeps bridge credentials and native RPC private.
+      '/panai': 'http://127.0.0.1:3210',
+      '/xlsx-sidecar': 'http://127.0.0.1:3210',
+    },
   },
   build: {
     // tauri.conf.json frontendDist points at ../dist

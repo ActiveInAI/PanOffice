@@ -120,11 +120,14 @@ export function Group({
   children,
   groupId,
   collapse,
+  noTranslate = false,
 }: {
   label: string
   children: ReactNode
   /** identity for width measurement + collapse bookkeeping */
   groupId?: string
+  /** Brand labels stay literal when Chrome page translation is active. */
+  noTranslate?: boolean
   /** present on collapsible groups; `collapsed` switches to the dropdown form */
   collapse?: { collapsed: boolean; open: boolean; onToggle: () => void; icon: ReactNode }
 }) {
@@ -143,7 +146,12 @@ export function Group({
                 {collapse.icon}
                 <RbCaret />
               </span>
-              <span>{label}</span>
+              <span
+                className={noTranslate ? 'notranslate' : undefined}
+                translate={noTranslate ? 'no' : undefined}
+              >
+                {label}
+              </span>
             </button>
             {collapse.open && (
               <div className="rb-drop rb-collapse-panel" onMouseDown={(e) => e.stopPropagation()}>
@@ -152,14 +160,24 @@ export function Group({
             )}
           </div>
         </div>
-        <div className="ribbon-group-label">{label}</div>
+        <div
+          className={`ribbon-group-label${noTranslate ? ' notranslate' : ''}`}
+          translate={noTranslate ? 'no' : undefined}
+        >
+          {label}
+        </div>
       </div>
     )
   }
   return (
     <div className="ribbon-group" data-rbgroup={groupId}>
       <div className="ribbon-group-items">{children}</div>
-      <div className="ribbon-group-label">{label}</div>
+      <div
+        className={`ribbon-group-label${noTranslate ? ' notranslate' : ''}`}
+        translate={noTranslate ? 'no' : undefined}
+      >
+        {label}
+      </div>
     </div>
   )
 }

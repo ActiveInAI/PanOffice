@@ -20,7 +20,9 @@ import type {
   ExtractPagesResult,
   InsertPdfRequest,
   InsertPdfResult,
+  OpenPdfResult,
   PdfApi,
+  SavePdfAsResult,
   SavePdfRequest,
   SavePdfResult,
 } from '../apps/pdf/shared/ipc'
@@ -59,6 +61,38 @@ async function save(request: SavePdfRequest): Promise<SavePdfResult> {
   }
 }
 
+async function openFile(): Promise<OpenPdfResult> {
+  if (isTauri()) {
+    return { ok: false, error: 'openFile dialog not implemented on tauri yet' }
+  }
+  try {
+    const file = await pickPdfFile()
+    if (!file) return { ok: true, canceled: true }
+    const path = file.name || 'document.pdf'
+    await platform.writeFile(path, new Uint8Array(await file.arrayBuffer()))
+    return { ok: true, path }
+  } catch (err) {
+    return { ok: false, error: errMsg(err) }
+  }
+}
+
+async function saveAs(request: SavePdfRequest, suggestedName: string): Promise<SavePdfAsResult> {
+  if (isTauri()) {
+    return { ok: false, error: 'saveAs dialog not implemented on tauri yet' }
+  }
+  try {
+    const input = await platform.readFile(request.path)
+    const out = await applySaveRequest(input, request)
+    const safeBase = String(suggestedName || 'document.pdf').replace(/[/\\:*?"<>|]/g, '_')
+    const path = /\.pdf$/i.test(safeBase) ? safeBase : `${safeBase}.pdf`
+    triggerDownload(path, out, 'application/pdf')
+    await platform.writeFile(path, out)
+    return { ok: true, savedPath: path }
+  } catch (err) {
+    return { ok: false, error: errMsg(err) }
+  }
+}
+
 /** Trigger a browser download for bytes (a[download]); Tauri path goes through dialogs instead */
 function triggerDownload(fileName: string, bytes: Uint8Array, mime: string): void {
   const url = URL.createObjectURL(new Blob([toArrayBuffer(bytes)], { type: mime }))
@@ -75,7 +109,10 @@ async function extractPages(request: ExtractPagesRequest): Promise<ExtractPagesR
     const out = await extractPagesBytes(bytes, request.pages)
     if (isTauri()) {
       // TODO(M3): native save dialog (tauri plugin-dialog) + write to the picked path
-      return { ok: false, error: 'extractPages save dialog not implemented on tauri yet' }
+      return {
+        ok: false,
+        error: 'extractPages save dialog not implemented on tauri yet',
+      }
     }
     // Browser fallback: download the bytes AND persist under the suggested
     // name in the overlay so the extracted file is reopenable in-session.
@@ -160,7 +197,7 @@ function sendCloseSaveResult(ok: boolean): void {
 
 function getLanguage(): Promise<Lang> {
   const stored = localStorage.getItem(LANG_KEY)
-  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as Lang) : 'en'
+  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as Lang) : 'zh'
   return Promise.resolve(lang)
 }
 
@@ -180,8 +217,10 @@ export function installPdfApi(): void {
   const ai = createAiBridge()
   const api: PdfApi = {
     consumePending,
+    openFile,
     readFile: (path) => platform.readFile(path).then(toArrayBuffer),
     save,
+    saveAs,
     extractPages,
     insertPdf,
     exportImages,

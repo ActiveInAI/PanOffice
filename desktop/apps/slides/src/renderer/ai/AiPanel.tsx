@@ -17,7 +17,7 @@ import { renderSlidesToPngBase64 } from '../export-render'
 import { isQcEnabled, mergeQcPages, qcSlidePage, QC_MAX_PAGES } from './slide-qc'
 import { useI18n, t as tGlobal, aiLangDirective, type TFunc } from '../i18n/locale'
 import { Markdown } from '@genoffice/ui'
-import { GensparkMark } from '../components/icons'
+import { PanAiMark } from '../components/icons'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -1369,7 +1369,7 @@ export function AiPanel({
   if (!open) {
     return (
       <button className="ai-rail" title={t('appAiRailExpand')} onClick={onExpand}>
-        <GensparkMark size={22} />
+        <PanAiMark size={22} />
       </button>
     )
   }
@@ -1392,15 +1392,16 @@ export function AiPanel({
       onDrop={onDrop}
     >
       <div
-        className="ai-panel-resizer"
+        className="ai-panel-resizer notranslate"
+        translate="no"
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark AI"
+        aria-label="PanAI"
       />
       <div className="ai-panel-header">
-        <span className="ai-panel-title">
-          <GensparkMark size={22} />
+        <span className="ai-panel-title notranslate" translate="no">
+          <PanAiMark size={22} />
           {t('aiPanelTitle')}
         </span>
         <div className="ai-panel-header-actions">

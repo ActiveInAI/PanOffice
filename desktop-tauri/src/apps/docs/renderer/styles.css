@@ -1,4 +1,5 @@
-:root {
+:root,
+.docs-app {
   --word-blue: #185abd;
   --word-blue-dark: #124a9e;
   --word-heading: #2f5496;
@@ -144,21 +145,22 @@ button {
    * ::after, sized to the label text rather than the padded button */
   border-bottom: 2.5px solid transparent;
   border-radius: 4px 4px 0 0;
+  white-space: nowrap;
 }
 
 /* hovering a tab tints the label, it doesn't paint a box */
-.ribbon-tab:hover {
+.docs-app .ribbon-tabs .ribbon-tab:hover {
   color: var(--word-blue);
 }
 
-.ribbon-tab.active {
+.docs-app .ribbon-tabs .ribbon-tab.active {
   color: var(--word-blue);
   font-weight: 600;
 }
 
 /* active underline: exactly the text width (insets = horizontal padding),
  * ends slightly rounded — not a full capsule */
-.ribbon-tab.active::after {
+.docs-app .ribbon-tabs .ribbon-tab.active::after {
   content: '';
   position: absolute;
   left: 13px;
@@ -169,7 +171,7 @@ button {
   background: var(--word-blue);
 }
 
-.ribbon-tab-file {
+.docs-app .ribbon-tabs .ribbon-tab-file {
   color: #fff;
   background: var(--word-blue);
   border-radius: 4px;
@@ -177,19 +179,24 @@ button {
   margin-right: 6px;
 }
 
-.ribbon-tab-file:hover,
-.ribbon-tab-file.open {
+.docs-app .ribbon-tabs .ribbon-tab-file:hover,
+.docs-app .ribbon-tabs .ribbon-tab-file.open {
   background: var(--word-blue-dark);
 }
 
 .file-tab-wrap {
   position: relative;
+  anchor-name: --file-menu;
+  anchor-scope: --file-menu;
 }
 
-.file-menu {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
+.ribbon-tabs .file-tab-wrap > .file-menu {
+  position: fixed;
+  position-anchor: --file-menu;
+  top: calc(anchor(bottom) + 2px);
+  left: anchor(left);
+  position-try-fallbacks: flip-inline;
+  position-visibility: anchors-visible;
   z-index: 60;
   min-width: 210px;
   background: var(--surface);
@@ -267,15 +274,14 @@ button {
   box-shadow: 0 2px 6px rgba(74, 92, 255, 0.25);
 }
 
-/* Genspark brand logo (Ribbon AI button and AI panel title) */
-.genspark-badge {
+/* PanAI brand logo (Ribbon AI button and AI panel title) */
+.panai-mark {
   display: block;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
 }
 
-.ai-panel-title .genspark-badge {
+.ai-panel-title .panai-mark {
   width: 18px;
   height: 18px;
 }
@@ -437,7 +443,7 @@ button {
   background: var(--active-bg);
 }
 
-/* The Genspark AI entry keeps a black label even while the panel is open. */
+/* The PanAI entry keeps a black label even while the panel is open. */
 .rb-big.ai-entry.active {
   color: var(--text);
 }
@@ -457,7 +463,7 @@ button {
   background: var(--hover);
 }
 
-/* Neutral gray, not the Word-blue --active-bg: the Genspark entry is the same
+/* Neutral gray, not the Word-blue --active-bg: the PanAI entry is the same
    control across docs/sheets/slides, so its open state matches their ribbons. */
 .rb-big.ai-entry.active {
   background: #e2e0de;
@@ -892,7 +898,7 @@ button {
 }
 
 /* line spacing dropdown */
-/* Home-tab Genspark AI entry: black circular "+" badge with a dropdown caret,
+/* Home-tab PanAI entry: black circular "+" badge with a dropdown caret,
    brand label below (mirrors the sheets Home ribbon). */
 /* AI feature buttons next to the entry: purple glyphs, label below */
 .ai-feature-icon {
@@ -3942,6 +3948,28 @@ body.docs-crop-active
   user-select: none;
 }
 
+.ai-panel-utility {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 21;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 92%);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.ai-panel-utility:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
 .ai-panel-header {
   display: flex;
   justify-content: space-between;
@@ -6729,7 +6757,7 @@ tr > .page-gap-cut {
 }
 
 .ai-dock.collapsed {
-  width: 34px;
+  width: 0;
 }
 
 /* while dragging the resizer, follow the pointer without easing */

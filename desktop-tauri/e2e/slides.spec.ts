@@ -248,7 +248,7 @@ test('open, edit title via real UI, save, reload — marker persists in the pptx
 
   // Quick-access Save → host save pipeline → pptx-engine patch → bridge write.
   // Completion is signaled by the saved bytes landing in the byte-store.
-  await page.getByTitle('Save (⌘S)').click()
+  await page.locator('.ribbon-tabs .qa-btn').first().click()
   let b64: string | null = null
   await expect
     .poll(

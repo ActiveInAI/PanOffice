@@ -1,7 +1,6 @@
 import type { Lang } from '@genoffice/i18n'
 import type { AiSettings, AiStreamChunk, AiStreamRequest } from '@genoffice/ai-provider'
 
-
 export type MarkupType = 'highlight' | 'underline' | 'strikeout'
 
 /** A text markup to write; quads are 4-point groups in PDF coords (y up) [x1,yTop,x2,yTop,x1,yBottom,x2,yBottom] */
@@ -86,6 +85,12 @@ export interface SavePdfRequest {
 
 export type SavePdfResult = { ok: true } | { ok: false; error: string }
 
+export type OpenPdfResult =
+  { ok: true; path: string } | { ok: true; canceled: true } | { ok: false; error: string }
+
+export type SavePdfAsResult =
+  { ok: true; savedPath: string } | { ok: true; canceled: true } | { ok: false; error: string }
+
 /** Extract pages into a new PDF: main process shows a save dialog; cancel returns canceled */
 export interface ExtractPagesRequest {
   path: string
@@ -121,15 +126,18 @@ export type ExportImagesResult =
   | { ok: true; canceled: true }
   | { ok: false; error: string }
 
-
 /** API exposed by preload to the renderer (window.pdfApi) */
 export interface PdfApi {
   /** Take the pdf path pending for this view (queued at tab creation); null if none */
   consumePending(): Promise<string | null>
+  /** Pick a PDF and grant this renderer access to it. */
+  openFile(): Promise<OpenPdfResult>
   /** Read pdf bytes. Only paths granted to this view are allowed */
   readFile(path: string): Promise<ArrayBuffer>
   /** Write markups/form values/page ops back to the original file (pdf-lib, content streams untouched); path grants same as readFile */
   save(request: SavePdfRequest): Promise<SavePdfResult>
+  /** Write the current document and pending edits to a user-selected new PDF. */
+  saveAs(request: SavePdfRequest, suggestedName: string): Promise<SavePdfAsResult>
   extractPages(request: ExtractPagesRequest): Promise<ExtractPagesResult>
   insertPdf(request: InsertPdfRequest): Promise<InsertPdfResult>
   exportImages(request: ExportImagesRequest): Promise<ExportImagesResult>

@@ -23,7 +23,7 @@ test('open, annotate, save, reload — note persists in the file bytes', async (
   await expect(textLayer).toContainText('Hello PanOffice', { timeout: 30_000 })
 
   // One edit through the real UI: Note tool → click on page 1 → type → OK
-  await page.getByRole('button', { name: 'Note', exact: true }).click()
+  await page.getByRole('button', { name: '便签', exact: true }).click()
   await page.locator('.pdf-draw-layer').first().click({ position: { x: 220, y: 220 } })
   const textarea = page.locator('.pdf-modal-textarea')
   await expect(textarea).toBeVisible()

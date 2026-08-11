@@ -1,7 +1,11 @@
-:root {
-  --accent: #c43e1c;
-  --accent-dark: #a33517;
-  --accent-soft: #fbeae5;
+:root,
+.pdf-app {
+  --pdf-word-blue: #185abd;
+  --pdf-excel-green: #107c41;
+  --pdf-powerpoint-red: #d24726;
+  --accent: var(--pdf-powerpoint-red);
+  --accent-dark: #b7472a;
+  --accent-soft: #fcece7;
   --surface: #ffffff;
   --chrome-bg: #ffffff;
   --border: #e1dfdd;
@@ -76,6 +80,80 @@ button {
   padding: 5px 12px 0;
   min-height: 35px;
   gap: 4px;
+}
+
+.ribbon-tabs .file-tab-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  anchor-name: --pdf-file-menu;
+  anchor-scope: --pdf-file-menu;
+}
+
+.pdf-app .ribbon-tabs .ribbon-tab-file {
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 16px;
+  margin-right: 4px;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--pdf-word-blue) 0 33.33%,
+    var(--pdf-excel-green) 33.33% 66.66%,
+    var(--pdf-powerpoint-red) 66.66% 100%
+  );
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pdf-app .ribbon-tabs .ribbon-tab-file:hover,
+.pdf-app .ribbon-tabs .ribbon-tab-file.open {
+  filter: brightness(0.9);
+}
+
+.app > .ribbon > .ribbon-tabs > .file-tab-wrap > .file-menu {
+  position: fixed;
+  top: 40px;
+  left: 12px;
+  position-anchor: --pdf-file-menu;
+  top: calc(anchor(bottom) + 2px);
+  left: anchor(left);
+  position-try-fallbacks: flip-inline;
+  position-visibility: anchors-visible;
+  z-index: 80;
+  min-width: 210px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.file-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  background: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.file-menu button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.file-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.file-menu-key {
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .ribbon-file {
@@ -1534,12 +1612,12 @@ button {
   width: var(--ai-panel-width, 360px);
   overflow: hidden;
   transition: width 180ms ease;
-  /* PanOffice: AI panel docks on the RIGHT (last in the .pdf-body flex row) */
+  /* PanAI panel docks on the RIGHT (last in the .pdf-body flex row). */
   order: 10;
 }
 
 .ai-dock.collapsed {
-  width: 34px;
+  width: 0;
 }
 
 /* while dragging the resizer, follow the pointer without easing */
@@ -1636,6 +1714,28 @@ button {
   --text-caption: 12px;
 }
 
+.ai-panel-utility {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 21;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 92%);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.ai-panel-utility:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
 .ai-panel-header {
   display: flex;
   justify-content: space-between;
@@ -1654,17 +1754,15 @@ button {
   white-space: nowrap;
 }
 
-/* PanOffice brand star (shared by the collapsed entry and the AI panel title) */
-.genspark-badge {
+/* PanAI brand star (shared by the collapsed entry and the AI panel title) */
+.panai-mark {
   display: block;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  flex: none;
 }
 
-.ai-panel-title .genspark-badge {
-  width: 18px;
-  height: 18px;
+.ai-panel-title .panai-mark {
+  width: 22px;
+  height: 22px;
 }
 
 .ai-panel-header-actions {

@@ -78,6 +78,50 @@ function idbDelete(path: string): Promise<void> {
   )
 }
 
+/**
+ * Remote save. WOPI contents URLs (…/wopi/files/<id>/contents?access_token=…)
+ * get proper lock citizenship — LOCK → PUT with X-WOPI-Lock → UNLOCK — so a
+ * save neither clobbers a Collabora session's file nor trips the host's lock
+ * check. A 409 on LOCK means another session holds the file; that surfaces as
+ * an honest save error. Non-WOPI remote URLs keep the plain PutFile-style POST.
+ */
+async function writeRemoteFile(path: string, bytes: Uint8Array): Promise<void> {
+  const wopi = /^(https?:\/\/[^?]+\/wopi\/files\/[^/]+)\/contents(\?.*)?$/i.exec(path)
+  if (!wopi) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: bytes as unknown as BodyInit,
+    })
+    if (!res.ok) throw new Error(`save failed: ${path} (HTTP ${res.status})`)
+    return
+  }
+  const fileUrl = wopi[1]!
+  const query = wopi[2] ?? ''
+  const lockToken = `panoffice-web-${crypto.randomUUID()}`
+  const lockRes = await fetch(`${fileUrl}${query}`, {
+    method: 'POST',
+    headers: { 'X-WOPI-Override': 'LOCK', 'X-WOPI-Lock': lockToken },
+  })
+  if (lockRes.status === 409) {
+    throw new Error(`save failed: ${path} (locked by another editing session)`)
+  }
+  if (!lockRes.ok) throw new Error(`save failed: ${path} (LOCK HTTP ${lockRes.status})`)
+  try {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-WOPI-Lock': lockToken },
+      body: bytes as unknown as BodyInit,
+    })
+    if (!res.ok) throw new Error(`save failed: ${path} (HTTP ${res.status})`)
+  } finally {
+    await fetch(`${fileUrl}${query}`, {
+      method: 'POST',
+      headers: { 'X-WOPI-Override': 'UNLOCK', 'X-WOPI-Lock': lockToken },
+    }).catch(() => undefined)
+  }
+}
+
 // ---- public API ----
 
 export const platform = {
@@ -114,12 +158,7 @@ export const platform = {
       return
     }
     if (isRemoteUrl(path)) {
-      const res = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: bytes as unknown as BodyInit,
-      })
-      if (!res.ok) throw new Error(`save failed: ${path} (HTTP ${res.status})`)
+      await writeRemoteFile(path, bytes)
       return
     }
     await idbPut(path, bytes)

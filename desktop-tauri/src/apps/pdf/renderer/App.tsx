@@ -5,7 +5,8 @@ import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react'
 import { GlobalWorkerOptions, TextLayer, getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
-import { AiPanel, PanofficeMark } from './ai/AiPanel'
+import { AiPanel, PanAiMark } from './ai/AiPanel'
+import { pickAndOpenOfficeFile } from '../../../open-office-file'
 import type { PdfAiDeps } from './ai/tools'
 import {
   MARKUP_COLORS,
@@ -38,6 +39,7 @@ import type {
   FormValueInput,
   MarkupType,
   MetadataInput,
+  SavePdfRequest,
   StampInput,
 } from '../shared/ipc'
 
@@ -74,6 +76,7 @@ function useVisibleSet(
   count: number,
   rootMargin: string,
   enabled = true,
+  refreshKey: unknown = null,
 ): { visible: Set<number>; setItemRef: (idx: number) => (el: HTMLElement | null) => void } {
   const [visible, setVisible] = useState<Set<number>>(new Set())
   const itemRefs = useRef<(HTMLElement | null)[]>([])
@@ -96,7 +99,7 @@ function useVisibleSet(
     )
     for (const el of itemRefs.current) if (el) io.observe(el)
     return () => io.disconnect()
-  }, [rootRef, count, rootMargin, enabled])
+  }, [rootRef, count, rootMargin, enabled, refreshKey])
   return {
     visible,
     setItemRef: (idx) => (el) => {
@@ -552,6 +555,97 @@ function parsePageRanges(input: string, max: number): number[] | null {
   return out.size > 0 ? [...out].sort((x, y) => x - y) : null
 }
 
+function PdfFileMenu({
+  fileLabel,
+  openLabel,
+  saveLabel,
+  saveAsLabel,
+  canSave,
+  canSaveAs,
+  onOpen,
+  onSave,
+  onSaveAs,
+}: {
+  fileLabel: string
+  openLabel: string
+  saveLabel: string
+  saveAsLabel: string
+  canSave: boolean
+  canSaveAs: boolean
+  onOpen: () => void
+  onSave: () => void
+  onSaveAs: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <div className="file-tab-wrap" ref={rootRef}>
+      <button
+        type="button"
+        className={`ribbon-tab-file${open ? ' open' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {fileLabel}
+      </button>
+      {open && (
+        <div className="file-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onOpen()
+            }}
+          >
+            {openLabel} <span className="file-menu-key">Ctrl+O</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!canSave}
+            onClick={() => {
+              setOpen(false)
+              onSave()
+            }}
+          >
+            {saveLabel} <span className="file-menu-key">Ctrl+S</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!canSaveAs}
+            onClick={() => {
+              setOpen(false)
+              onSaveAs()
+            }}
+          >
+            {saveAsLabel} <span className="file-menu-key">Ctrl+Shift+S</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const { t } = useI18n()
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
@@ -671,12 +765,15 @@ export default function App() {
     scrollRef,
     rows.length,
     '800px 0px',
+    true,
+    doc,
   )
   const { visible: visibleThumbs, setItemRef: setThumbRef } = useVisibleSet(
     thumbsRef,
     pageCount,
     '400px 0px',
     sidebar === 'thumbs',
+    doc,
   )
 
   const loadDoc = useCallback(async (path: string, previous: PDFDocumentProxy | null) => {
@@ -719,12 +816,12 @@ export default function App() {
   }, [])
 
   const openPath = useCallback(
-    async (path: string) => {
+    async (path: string, previous: PDFDocumentProxy | null = null) => {
       try {
         setFilePath(path)
         // A newly opened file starts outside the autosave gate
         savedOnceRef.current = false
-        await loadDoc(path, null)
+        await loadDoc(path, previous)
         setStatus('ready')
       } catch (err) {
         if ((err as Error | null)?.name === 'PasswordException') {
@@ -1067,22 +1164,29 @@ export default function App() {
     setSaveState('error')
   }
 
+  const openDocument = useCallback(async () => {
+    if (dirty && !window.confirm(t('openDiscardConfirm'))) return
+    await pickAndOpenOfficeFile()
+  }, [dirty, t])
+
+  const buildSaveRequest = (path: string): SavePdfRequest => ({
+    path,
+    markups: markups.map(({ id: _id, ...rest }) => rest),
+    drawings: drawings.map((drawing) => drawing.input),
+    stamps: stampCfg ? renderStamps(stampCfg, visList) : [],
+    formValues: [...formEdits.values()],
+    rotations: [...rotations].map(([pageIndex, delta]) => ({ pageIndex, delta })),
+    deletedPages: [...deleted],
+    ...(order ? { pageOrder: visList } : {}),
+    ...(metadata ? { metadata } : {}),
+  })
+
   const save = async (autosave = false): Promise<boolean> => {
     if (!dirty || saveState === 'saving' || !filePath) return !dirty
     // An explicit save opts this file into autosave
     if (!autosave) savedOnceRef.current = true
     setSaveState('saving')
-    const result = await window.pdfApi.save({
-      path: filePath,
-      markups: markups.map(({ id: _id, ...rest }) => rest),
-      drawings: drawings.map((d) => d.input),
-      stamps: stampCfg ? renderStamps(stampCfg, visList) : [],
-      formValues: [...formEdits.values()],
-      rotations: [...rotations].map(([pageIndex, delta]) => ({ pageIndex, delta })),
-      deletedPages: [...deleted],
-      ...(order ? { pageOrder: visList } : {}),
-      ...(metadata ? { metadata } : {}),
-    })
+    const result = await window.pdfApi.save(buildSaveRequest(filePath))
     if (!result.ok) {
       opFailed(result.error)
       return false
@@ -1100,6 +1204,33 @@ export default function App() {
     }
     setSaveState('saved')
     setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), 2000)
+    return true
+  }
+
+  const saveAsDocument = async (): Promise<boolean> => {
+    if (!filePath || !doc || saveState === 'saving' || readOnly) return false
+    setSaveState('saving')
+    const suggestedName = /\.pdf$/i.test(fileName) ? fileName : 'document.pdf'
+    const result = await window.pdfApi.saveAs(buildSaveRequest(filePath), suggestedName)
+    if (!result.ok) {
+      opFailed(result.error)
+      return false
+    }
+    if ('canceled' in result) {
+      setSaveState('idle')
+      return false
+    }
+    savedOnceRef.current = true
+    setFilePath(result.savedPath)
+    try {
+      await loadDoc(result.savedPath, doc)
+    } catch (err) {
+      opFailed(err instanceof Error ? err.message : String(err))
+      return false
+    }
+    setStatus('ready')
+    setSaveState('saved')
+    setTimeout(() => setSaveState((state) => (state === 'saved' ? 'idle' : state)), 2000)
     return true
   }
 
@@ -1430,7 +1561,7 @@ export default function App() {
     })
   })
 
-  // Shortcuts: ⌘S/⌘F/⌘P/⌘±/⌘0 + page navigation (only ⌘ combos kept while an input control is focused)
+  // Shortcuts: ⌘O/⌘S/⇧⌘S/⌘F/⌘P/⌘±/⌘0 + page navigation.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -1442,9 +1573,13 @@ export default function App() {
           target.isContentEditable)
       if (e.metaKey || e.ctrlKey) {
         const k = e.key.toLowerCase()
-        if (k === 's') {
+        if (k === 'o') {
           e.preventDefault()
-          void save()
+          void openDocument()
+        } else if (k === 's') {
+          e.preventDefault()
+          if (e.shiftKey) void saveAsDocument()
+          else void save()
         } else if (k === 'z') {
           e.preventDefault()
           if (e.shiftKey) redo()
@@ -1537,9 +1672,26 @@ export default function App() {
     return () => el.removeEventListener('wheel', onWheel)
   })
 
+  const fileMenu = (
+    <PdfFileMenu
+      fileLabel={t('fileMenu')}
+      openLabel={t('openFile')}
+      saveLabel={t('save')}
+      saveAsLabel={t('saveAs')}
+      canSave={status === 'ready' && dirty && saveState !== 'saving' && !readOnly}
+      canSaveAs={status === 'ready' && !!doc && saveState !== 'saving' && !readOnly}
+      onOpen={() => void openDocument()}
+      onSave={() => void save()}
+      onSaveAs={() => void saveAsDocument()}
+    />
+  )
+
   if (status === 'password') {
     return (
-      <div className="app">
+      <div className="app pdf-app">
+        <div className="ribbon">
+          <div className="ribbon-tabs">{fileMenu}</div>
+        </div>
         <div className="pdf-placeholder">
           <form
             className="pdf-password"
@@ -1571,7 +1723,10 @@ export default function App() {
 
   if (status !== 'ready' || !doc) {
     return (
-      <div className="app">
+      <div className="app pdf-app">
+        <div className="ribbon">
+          <div className="ribbon-tabs">{fileMenu}</div>
+        </div>
         <div className="pdf-placeholder">
           {status === 'loading' ? t('loading') : status === 'error' ? t('loadError') : t('noFile')}
         </div>
@@ -1582,9 +1737,10 @@ export default function App() {
   const menuOrig = thumbMenu?.origIdx ?? -1
 
   return (
-    <div className="app">
+    <div className="app pdf-app">
       <div className="ribbon">
         <div className="ribbon-tabs">
+          {fileMenu}
           <button
             className="qa-btn"
             title={`${t('save')} (⌘S)`}
@@ -1918,37 +2074,31 @@ export default function App() {
             </div>
           </div>
           <div className="ribbon-sep" />
-          {/* ---- AI assistant (PanOffice entry on the ribbon) ---- */}
+          {/* ---- AI assistant (PanAI entry on the ribbon) ---- */}
           <div className="ribbon-group">
             <div className="ribbon-group-items">
               <button
                 className={`rb-big rb-ai${aiCollapsed ? '' : ' active'}`}
                 title={t('ribbonAiAssistantTip')}
+                aria-pressed={!aiCollapsed}
+                data-testid="panai-toggle"
                 onClick={() => setAiCollapsed((v) => !v)}
               >
                 <span className="rb-big-icon">
-                  <PanofficeMark size={28} />
+                  <PanAiMark size={28} />
                 </span>
-                <span>{t('ribbonAiAssistant')}</span>
+                <span className="notranslate" translate="no">
+                  {t('ribbonAiAssistant')}
+                </span>
               </button>
             </div>
           </div>
         </div>
       </div>
       <div className="pdf-body">
-        {/* dock wrapper animates the width between panel and rail (docs-style 180ms ease);
-            the panel stays mounted while collapsed so the chat history survives */}
-        <div className={`ai-dock${aiCollapsed ? ' collapsed' : ''}`}>
-          {aiCollapsed && (
-            <button
-              className="ai-rail"
-              title={t('aiOpenAssistant')}
-              onClick={() => setAiCollapsed(false)}
-            >
-              <PanofficeMark size={22} />
-            </button>
-          )}
-          <AiPanel api={aiApi} onCollapse={() => setAiCollapsed(true)} />
+        {/* The panel stays mounted while closed so chat and in-flight work survive. */}
+        <div className={`ai-dock${aiCollapsed ? ' collapsed' : ''}`} data-testid="panai-dock">
+          <AiPanel api={aiApi} />
         </div>
         {sidebar === 'outline' && outline && (
           <div className="pdf-thumbs pdf-outline-pane">

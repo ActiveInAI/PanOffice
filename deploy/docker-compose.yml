@@ -8,6 +8,11 @@ services:
       PORT: "3000"
       DATA_DIR: /data/files
       WOPI_TOKEN: ${WOPI_TOKEN:-devtoken}
+      WOPI_SHARED_TOKEN_FILE: /run/secrets/panoffice-token
+      WOPI_ALLOW_DEV_TOKEN: "false"
+      WOPI_DEV_UI_ENABLED: "false"
+      WOPI_VERSION_CAP: "0"
+      SHELL_DIR: /opt/panoffice-shell
       # coolwsd reaches the WOPI host over the compose network...
       WOPI_PUBLIC_BASE: http://wopi-host:3000
       COLLABORA_INTERNAL_URL: http://collabora:9980
@@ -15,7 +20,9 @@ services:
       # (9981 on the host: 9980 is taken by the pre-existing collabora-code container.)
       COLLABORA_PUBLIC_URL: ${COLLABORA_PUBLIC_URL:-http://localhost:9981}
     volumes:
-      - ./data/files:/data/files
+      - panoffice-dev-files:/data/files
+      - ../desktop-tauri/dist:/opt/panoffice-shell:ro
+      - /home/arch-gpt--notebook001/.config/panoffice/panoffice-token:/run/secrets/panoffice-token:ro
     ports:
       - "127.0.0.1:3000:3000"
 
@@ -32,3 +39,8 @@ services:
       - "127.0.0.1:9981:9980"
     depends_on:
       - wopi-host
+
+volumes:
+  # Dedicated local development storage. Never bind a deployment server's
+  # office files, PanAI conversations, or browser recent-file state here.
+  panoffice-dev-files:

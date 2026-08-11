@@ -4,7 +4,7 @@ import { saveEditSelection } from '../TextEditOverlay'
 import { armColorInput } from '../color-input'
 import { displayFontFamily } from '../konva-adapter'
 import {
-  GensparkMark,
+  PanAiMark,
   IconAiBeautify,
   IconAiFactCheck,
   IconAiImage,
@@ -133,16 +133,20 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
   }
   return (
     <>
-      <Group label="Genspark AI">
+      <Group label="PanAI" noTranslate>
         <button
           className={`rb-big ai-entry${aiOpen ? ' active' : ''}`}
           title={t('aiOpenAssistant')}
+          aria-pressed={aiOpen}
+          data-testid="panai-toggle"
           onClick={onToggleAi}
         >
           <span className="rb-big-icon">
-            <GensparkMark size={26} />
+            <PanAiMark size={26} />
           </span>
-          <span>Genspark AI</span>
+          <span className="notranslate" translate="no">
+            PanAI
+          </span>
         </button>
         <button
           className="rb-big ai-entry"

@@ -5,5 +5,9 @@ release/
 target/
 test-results/
 playwright-report/
+.runtime-local/
 deploy/data/files/*
 !deploy/data/files/.gitkeep
+
+# Local visual QA captures can include private server/recent-file metadata.
+/docs/screenshots/shell-home-unified.png

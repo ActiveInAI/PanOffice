@@ -1,6 +1,6 @@
-// The AI panel stays mounted while collapsed (rail only),
-// so the conversation, draft, and in-flight runs survive collapse/expand.
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+// The AI panel stays mounted while collapsed but renders no residual rail,
+// so the draft and in-flight state survive without consuming canvas width.
+import { beforeAll, describe, expect, it } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Editor } from '@tiptap/core'
@@ -57,8 +57,6 @@ function panelProps(editor: Editor, overrides: Record<string, unknown> = {}) {
     blocks: [],
     settings,
     open: true,
-    onExpand: () => {},
-    onCollapse: () => {},
     ...overrides,
   }
 }
@@ -87,10 +85,11 @@ describe('AiPanel collapse', () => {
     typeInto(textarea!, 'unsent draft')
     expect(textarea!.value).toBe('unsent draft')
 
-    // collapse: only the rail is rendered, but the component stays mounted
+    // collapse: no panel chrome or rail is rendered, but the component stays mounted
     act(() => root.render(createElement(AiPanel, panelProps(editor, { open: false }))))
     expect(container.querySelector('.ai-input-box textarea')).toBeNull()
-    expect(container.querySelector('.ai-rail')).not.toBeNull()
+    expect(container.querySelector('.ai-rail')).toBeNull()
+    expect(container.querySelector('[data-testid="panai-panel"]')).toBeNull()
 
     // expand: the draft is still there
     act(() => root.render(createElement(AiPanel, panelProps(editor, { open: true }))))
@@ -102,17 +101,15 @@ describe('AiPanel collapse', () => {
     editor.destroy()
   })
 
-  it('expands back through the rail button', () => {
+  it('leaves no width-consuming rail while closed', () => {
     const editor = createEditor()
-    const onExpand = vi.fn()
     const { container, cleanup } = mount(
-      createElement(AiPanel, panelProps(editor, { open: false, onExpand })),
+      createElement(AiPanel, panelProps(editor, { open: false })),
     )
 
-    const rail = container.querySelector<HTMLButtonElement>('.ai-rail')
-    expect(rail).not.toBeNull()
-    act(() => rail!.click())
-    expect(onExpand).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.ai-rail')).toBeNull()
+    expect(container.querySelector('[data-testid="panai-panel"]')).toBeNull()
+    expect(container.childElementCount).toBe(0)
 
     cleanup()
     editor.destroy()

@@ -2939,7 +2939,9 @@ export function App(): React.JSX.Element {
         onCommand={handleRibbonCommand}
         zoomPercent={zoomPercent}
         canSave={pendingEdits > 0}
+        onOpen={() => void handleInspectWorkbook()}
         onSave={() => void handleSave('save')}
+        onSaveAs={() => void handleSave('save-as')}
         onRedo={handleRedo}
         autoSave={autoSave}
         onAutoSaveChange={setAutoSave}

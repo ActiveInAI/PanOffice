@@ -18,6 +18,9 @@ const OFFICE_EXTS = new Set([
   'docx', 'doc', 'odt', 'rtf', 'txt', 'xlsx', 'xls', 'ods', 'csv', 'pptx', 'ppt', 'odp', 'pdf',
 ])
 
+/** Extensions our own GenOffice web editors open, mapped to the shell hash route. */
+const SHELL_ROUTES: Record<string, string> = { docx: 'docs', xlsx: 'sheets', pptx: 'slides' }
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -48,8 +51,10 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
 
   /** Map a WOPI file id to a path inside dataDir, or null if it escapes. */
   function filePathFor(id: string): string | null {
-    if (!id || id !== basename(id) || id.includes('\0')) return null
-    const p = resolve(join(dataDir, id))
+    if (!id || id.includes('\0')) return null
+    const normalized = id.replace(/\\/g, '/')
+    if (normalized.startsWith('/') || /^[a-zA-Z]:/.test(normalized)) return null
+    const p = resolve(join(dataDir, normalized))
     return p.startsWith(dataDir + sep) ? p : null
   }
 
@@ -150,9 +155,10 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
 
   const app = express()
 
-  // CORS for the PanOffice web shell (browser-side PDF editor calls these
+  // CORS for the PanOffice web shell (browser-side editors call these
   // endpoints cross-origin). Dev-scoped: only the configured shell origin.
-  app.use('/wopi', (req: Request, res: Response, next: NextFunction) => {
+  // Covers WOPI plus the shell's file-manager endpoints (/files.json, /upload).
+  function shellCors(req: Request, res: Response, next: NextFunction): void {
     res.set('Access-Control-Allow-Origin', cfg.pdfAppOrigin)
     res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-WOPI-Override, X-WOPI-Lock')
@@ -161,8 +167,140 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
       return
     }
     next()
-  })
+  }
+  app.use('/wopi', shellCors)
+  app.use('/files.json', shellCors)
+  app.use('/upload', shellCors)
   app.use('/wopi', wopiAuth, wopiProof)
+
+  function requireShellOrigin(req: Request, res: Response, next: NextFunction): void {
+    if (req.get('origin') !== cfg.pdfAppOrigin) {
+      res.status(403).json({ ok: false, error: { code: 'forbidden', message: 'Invalid shell origin.' } })
+      return
+    }
+    next()
+  }
+
+  // PanAI runs through a same-origin, server-managed bridge. The browser never
+  // receives the loopback URL or bearer credential; the server also forces the
+  // configured model so a document prompt cannot select an arbitrary backend.
+  const panAiEnabled = Boolean(cfg.panAiBridgeUrl && cfg.panAiBridgeToken)
+
+  app.get('/panai/config', (_req, res) => {
+    res.set('Cache-Control', 'no-store')
+    res.json({ enabled: panAiEnabled, model: panAiEnabled ? cfg.panAiModel : '' })
+  })
+
+  app.post(
+    '/panai/turn',
+    requireShellOrigin,
+    express.json({ type: 'application/json', limit: '1mb', strict: true }),
+    async (req: Request, res: Response) => {
+      if (!panAiEnabled) {
+        res.status(503).json({ ok: false, error: 'PanAI service is not configured.' })
+        return
+      }
+      const prompt = (req.body as { prompt?: unknown } | undefined)?.prompt
+      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 512_000) {
+        res.status(400).json({ ok: false, error: 'Invalid PanAI prompt.' })
+        return
+      }
+
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 180_000)
+      const abort = () => controller.abort()
+      req.once('aborted', abort)
+      try {
+        const upstream = await fetch(`${cfg.panAiBridgeUrl!}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${cfg.panAiBridgeToken!}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: cfg.panAiModel,
+            stream: false,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  '你是 PanAI 的 Office 智能体。严格遵循用户消息中的 SYSTEM、AVAILABLE_TOOLS 和 MESSAGES；需要工具时只返回指定的 tool_calls JSON。',
+              },
+              { role: 'user', content: prompt },
+            ],
+          }),
+          redirect: 'error',
+          signal: controller.signal,
+        })
+        if (!upstream.ok) {
+          res.status(502).json({ ok: false, error: `PanAI upstream HTTP ${upstream.status}.` })
+          return
+        }
+        const payload = (await upstream.json()) as {
+          choices?: Array<{ message?: { content?: unknown } }>
+        }
+        const text = payload.choices?.[0]?.message?.content
+        if (typeof text !== 'string' || !text.trim()) {
+          res.status(502).json({ ok: false, error: 'PanAI upstream returned no content.' })
+          return
+        }
+        res.set('Cache-Control', 'no-store')
+        res.json({ ok: true, text, model: cfg.panAiModel })
+      } catch (error) {
+        const timedOut = controller.signal.aborted
+        res.status(timedOut ? 504 : 502).json({
+          ok: false,
+          error: timedOut ? 'PanAI upstream timed out.' : 'PanAI upstream is unavailable.',
+        })
+      } finally {
+        clearTimeout(timeout)
+        req.off('aborted', abort)
+      }
+    },
+  )
+
+  // Browser-mode spreadsheets need the native XLSX engine. Keep that engine
+  // on loopback and expose only this origin-checked, same-origin RPC bridge.
+  if (cfg.xlsxRpcUrl) {
+    app.post(
+      '/xlsx-sidecar/rpc',
+      requireShellOrigin,
+      express.raw({ type: 'application/json', limit: '512mb' }),
+      async (req: Request, res: Response) => {
+        if (!Buffer.isBuffer(req.body)) {
+          res.status(415).json({
+            ok: false,
+            error: { code: 'unsupported_media_type', message: 'Expected application/json.' },
+          })
+          return
+        }
+        try {
+          const upstream = await fetch(cfg.xlsxRpcUrl!, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: req.body as unknown as BodyInit,
+            redirect: 'error',
+            signal: AbortSignal.timeout(190_000),
+          })
+          const body = Buffer.from(await upstream.arrayBuffer())
+          res.status(upstream.status)
+          res.type(upstream.headers.get('content-type') ?? 'application/json')
+          res.set('Cache-Control', 'no-store')
+          res.send(body)
+        } catch {
+          res.status(502).json({
+            ok: false,
+            error: { code: 'xlsx_rpc_unavailable', message: 'XLSX service unavailable.' },
+          })
+        }
+      },
+    )
+  }
+
+  // PanOffice Web 壳（GenOffice 编辑器）挂载在根路径；API 路由不受影响。
+  if (cfg.shellDir) {
+    app.use(express.static(resolve(cfg.shellDir), { index: 'index.html', extensions: ['html'] }))
+  }
 
   // CheckFileInfo
   app.get('/wopi/files/:id', requireFile, (req: Request, res: Response) => {
@@ -293,8 +431,53 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
   const tokenChoices = listDevTokenChoices(cfg)
   const defaultToken = tokenChoices[0]?.token ?? ''
 
+  function requireDevUi(_req: Request, res: Response, next: NextFunction): void {
+    if (!cfg.devUiEnabled) {
+      res.status(404).json({ error: 'not found' })
+      return
+    }
+    next()
+  }
+
+  interface ListedFile {
+    name: string
+    size: number
+    mtimeMs: number
+    /** Authorized WOPI contents URL for the explicitly enabled shell UI. */
+    contentUrl?: string
+  }
+
+  /** Visible files in dataDir (dotfiles and internal dirs stay hidden), sorted by name. */
+  function listFiles(): ListedFile[] {
+    if (!existsSync(dataDir)) return []
+    return readdirSync(dataDir)
+      .filter((f) => !f.startsWith('.'))
+      .flatMap((f) => {
+        const st = statSync(join(dataDir, f))
+        return st.isFile()
+          ? [{
+              name: f,
+              size: st.size,
+              mtimeMs: st.mtimeMs,
+              ...(defaultToken
+                ? {
+                    contentUrl: `${cfg.wopiPublicBase}/wopi/files/${encodeURIComponent(f)}/contents?access_token=${encodeURIComponent(defaultToken)}`,
+                  }
+                : {}),
+            }]
+          : []
+      })
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  }
+
   app.get('/healthz', (_req, res) => {
     res.type('text').send('ok')
+  })
+
+  // File listing for the web shell's file-manager home (JSON sibling of the
+  // dev index page; CORS-enabled via the shellCors mount above).
+  app.get('/files.json', requireDevUi, (_req, res) => {
+    res.json(listFiles())
   })
 
   // Dev upload: POST /upload?name=<file.ext> with raw bytes → lands in DATA_DIR.
@@ -302,6 +485,7 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
   // to WOPI PutFile saves, not to this plain upload path.
   app.post(
     '/upload',
+    requireDevUi,
     express.raw({ type: () => true, limit: '256mb' }),
     (req: Request, res: Response) => {
       const name = String(req.query.name ?? '')
@@ -318,27 +502,33 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
     },
   )
 
-  app.get('/', (_req, res) => {
-    const files = existsSync(dataDir)
-      ? readdirSync(dataDir)
-          .filter((f) => !f.startsWith('.') && statSync(join(dataDir, f)).isFile())
-          .sort()
-      : []
-    const rows = files
-      .map((f) => {
+  app.get('/', requireDevUi, (_req, res) => {
+    // Shell-editor link: the src template keeps {T} so the token chooser can
+    // re-token every link client-side without a page reload.
+    const shellLink = (f: string, app: string, label: string, cls: string): string => {
+      const srcTemplate = `${cfg.wopiPublicBase}/wopi/files/${encodeURIComponent(f)}/contents?access_token={T}`
+      const href = `${cfg.pdfAppUrl}/#/${app}?src=${encodeURIComponent(srcTemplate.replace('{T}', defaultToken))}`
+      return ` — <a class="edit-link ${cls}" data-src-template="${escapeHtml(srcTemplate)}" href="${escapeHtml(href)}">${label}</a>`
+    }
+    const rows = listFiles()
+      .map(({ name: f, size }) => {
         const ext = f.split('.').pop()?.toLowerCase() ?? ''
-        const size = statSync(join(dataDir, f)).size
         if (ext === 'pdf') {
           // PDFs open in the PanOffice web editor (real editing), not Collabora's view-only Draw
-          const srcTemplate = `${cfg.wopiPublicBase}/wopi/files/${encodeURIComponent(f)}/contents?access_token={T}`
-          const href = `${cfg.pdfAppUrl}/#/pdf?src=${encodeURIComponent(srcTemplate.replace('{T}', defaultToken))}`
-          const edit = ` — <a class="edit-link pdf-edit" data-pdf-src-template="${escapeHtml(srcTemplate)}" href="${escapeHtml(href)}">edit in PanOffice PDF</a>`
+          const edit = shellLink(f, 'pdf', 'edit in PanOffice PDF', 'pdf-edit')
           return `<li><code>${escapeHtml(f)}</code> (${size} B)${edit}</li>`
         }
-        const edit = OFFICE_EXTS.has(ext)
-          ? ` — <a class="edit-link" href="/edit/${encodeURIComponent(f)}">edit in Collabora</a>`
-          : ''
-        return `<li><code>${escapeHtml(f)}</code> (${size} B)${edit}</li>`
+        let links = ''
+        const shellRoute = SHELL_ROUTES[ext]
+        if (shellRoute) {
+          // docx/xlsx/pptx: our GenOffice editors are the web mainline…
+          links += shellLink(f, shellRoute, 'PanOffice 编辑器', 'shell-edit')
+        }
+        if (OFFICE_EXTS.has(ext)) {
+          // …with Collabora kept as the real-time collaboration option
+          links += ` — <a class="edit-link" href="/edit/${encodeURIComponent(f)}">edit in Collabora</a>`
+        }
+        return `<li><code>${escapeHtml(f)}</code> (${size} B)${links}</li>`
       })
       .join('\n')
     const chooser =
@@ -351,12 +541,14 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
             .join('')}</select></p>
 <script>
 const chooser = document.getElementById('token-chooser')
-const PDF_APP = ${JSON.stringify(cfg.pdfAppUrl)}
 const apply = () => {
   document.querySelectorAll('a.edit-link').forEach((a) => {
-    if (a.classList.contains('pdf-edit')) {
-      const t = a.getAttribute('data-pdf-src-template').replace('{T}', encodeURIComponent(chooser.value))
-      a.setAttribute('href', PDF_APP + '/#/pdf?src=' + encodeURIComponent(t))
+    const tpl = a.getAttribute('data-src-template')
+    if (tpl !== null) {
+      // PanOffice editor links: swap {T} in the WOPI src, keep the shell route
+      const t = tpl.replace('{T}', encodeURIComponent(chooser.value))
+      const prefix = a.getAttribute('href').split('?src=')[0]
+      a.setAttribute('href', prefix + '?src=' + encodeURIComponent(t))
       return
     }
     const base = a.getAttribute('href').split('?')[0]
@@ -396,12 +588,15 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
     body: file,
   })
   if (!res.ok) { alert('upload failed: HTTP ' + res.status); return }
-  // open it right away, same routing as the list: pdf → PanOffice editor, rest → Collabora
+  // open it right away, same routing as the list: pdf/docx/xlsx/pptx → the
+  // PanOffice editors, everything else → Collabora
   const chooser = document.getElementById('token-chooser')
   const token = chooser ? chooser.value : DEFAULT_TOKEN
-  if (/\\.pdf$/i.test(file.name)) {
+  const m = /\\.(pdf|docx|xlsx|pptx)$/i.exec(file.name)
+  if (m) {
+    const app = { pdf: 'pdf', docx: 'docs', xlsx: 'sheets', pptx: 'slides' }[m[1].toLowerCase()]
     const src = ${JSON.stringify(cfg.wopiPublicBase)} + '/wopi/files/' + encodeURIComponent(file.name) + '/contents?access_token=' + encodeURIComponent(token)
-    window.location.href = ${JSON.stringify(cfg.pdfAppUrl)} + '/#/pdf?src=' + encodeURIComponent(src)
+    window.location.href = ${JSON.stringify(cfg.pdfAppUrl)} + '/#/' + app + '?src=' + encodeURIComponent(src)
   } else {
     window.location.href = '/edit/' + encodeURIComponent(file.name) + '?token=' + encodeURIComponent(token)
   }
@@ -411,7 +606,7 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
 </body></html>`)
   })
 
-  app.get('/edit/:id', async (req: Request, res: Response) => {
+  app.get('/edit/:id', requireDevUi, async (req: Request, res: Response) => {
     const id = req.params.id
     const p = filePathFor(id)
     if (!p || !existsSync(p)) {

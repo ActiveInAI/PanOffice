@@ -17,7 +17,6 @@ import { renderSlidesToPngBase64 } from '../export-render'
 import { isQcEnabled, mergeQcPages, qcSlidePage, QC_MAX_PAGES } from './slide-qc'
 import { useI18n, t as tGlobal, aiLangDirective, type TFunc } from '../i18n/locale'
 import { Markdown } from '@genoffice/ui'
-import { GensparkMark } from '../components/icons'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -27,7 +26,6 @@ import {
   IconNewChat,
   IconPaperclip,
   IconRefresh,
-  IconSidebarCollapseLeft,
 } from '../components/icons'
 
 interface ToolActivity {
@@ -148,11 +146,8 @@ interface AiPanelProps {
     attachments?: AttachmentMeta[]
     slideShot?: boolean
   } | null
-  /** false shows only the collapsed rail; the component stays mounted so panel state survives */
+  /** false renders no chrome or rail; the component stays mounted so panel state survives */
   open?: boolean
-  /** expand from the collapsed rail */
-  onExpand?: () => void
-  onCollapse?: () => void
   /** Visible rollback action; uses the same main-process history as Cmd/Ctrl+Z. */
   onUndo?: () => void
   /** Callback to update the path after AI generation lands on disk (title bar sync) */
@@ -232,8 +227,6 @@ export function AiPanel({
   settings,
   preset,
   open = true,
-  onExpand,
-  onCollapse,
   onPathChange,
   onDeckProgress,
   currentFilePath,
@@ -1319,7 +1312,7 @@ export function AiPanel({
     setDragOver(false)
     const paths = Array.from(e.dataTransfer.files)
       .map((f) => window.desktop.getPathForFile(f))
-      .filter((p): p is string => p != null)
+      .filter((path): path is string => path != null)
     if (paths.length > 0) mergeAttachments(await window.desktop.addAttachmentPaths(paths))
   }
 
@@ -1365,18 +1358,13 @@ export function AiPanel({
     window.addEventListener('pointerup', onUp)
   }
 
-  // collapsed: rail only — after all hooks, so the instance and its state survive
-  if (!open) {
-    return (
-      <button className="ai-rail" title={t('appAiRailExpand')} onClick={onExpand}>
-        <GensparkMark size={22} />
-      </button>
-    )
-  }
+  // Keep the instance mounted for in-flight work, but closed means zero UI and zero width.
+  if (!open) return null
 
   return (
     <aside
       ref={asideRef}
+      data-testid="panai-panel"
       style={{ width: '100%' }}
       className={`ai-panel${dragOver ? ' ai-panel-dragover' : ''}${resizing ? ' ai-panel-resizing' : ''}`}
       onDragOver={(e) => {
@@ -1392,30 +1380,18 @@ export function AiPanel({
       onDrop={onDrop}
     >
       <div
-        className="ai-panel-resizer"
+        className="ai-panel-resizer notranslate"
+        translate="no"
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark AI"
+        aria-label="PanAI"
       />
-      <div className="ai-panel-header">
-        <span className="ai-panel-title">
-          <GensparkMark size={22} />
-          {t('aiPanelTitle')}
-        </span>
-        <div className="ai-panel-header-actions">
-          {chat.length > 0 && (
-            <button className="ai-header-btn" onClick={newChat} title={t('aiNewChat')}>
-              <IconNewChat size={15} />
-            </button>
-          )}
-          {onCollapse && (
-            <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapsePanel')}>
-              <IconSidebarCollapseLeft size={15} />
-            </button>
-          )}
-        </div>
-      </div>
+      {chat.length > 0 && (
+        <button className="ai-panel-utility" onClick={newChat} title={t('aiNewChat')}>
+          <IconNewChat size={15} />
+        </button>
+      )}
 
       <div ref={logRef} className="ai-chat" onScroll={onLogScroll}>
         {/* Past conversation (read-only transcript, not fed to the model), displayed continuously with the current turn */}

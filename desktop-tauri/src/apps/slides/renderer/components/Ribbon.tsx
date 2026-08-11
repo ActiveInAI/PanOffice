@@ -93,21 +93,20 @@ type MainTab =
   | 'view'
 type ContextTab = 'tableDesign' | 'chartDesign' | 'pictureFormat'
 
-// Mac has no "File" tab (file operations go through the native menu), Windows does
-const TABS: readonly MainTab[] = IS_MAC
-  ? ['home', 'insert', 'draw', 'design', 'transitions', 'animations', 'slideShow', 'review', 'view']
-  : [
-      'file',
-      'home',
-      'insert',
-      'draw',
-      'design',
-      'transitions',
-      'animations',
-      'slideShow',
-      'review',
-      'view',
-    ]
+// The in-app File menu stays available on every platform; native menus are an
+// additional entry point into the same handlers.
+const TABS: readonly MainTab[] = [
+  'file',
+  'home',
+  'insert',
+  'draw',
+  'design',
+  'transitions',
+  'animations',
+  'slideShow',
+  'review',
+  'view',
+]
 
 const TAB_LABEL: Record<MainTab | ContextTab, StringKey> = {
   file: 'ribbonTabFile',
@@ -1239,73 +1238,71 @@ export function Ribbon({
       <div
         className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}`}
       >
-        {!IS_MAC && (
-          <div className="file-tab-wrap">
-            <button
-              className={`ribbon-tab ribbon-tab-file ${fileOpen ? 'open' : ''}`}
-              onClick={() => setFileOpen((v) => !v)}
-            >
-              {t('ribbonTabFile')}
-            </button>
-            {fileOpen && (
-              <div className="file-menu">
-                <button
-                  onClick={() => {
-                    setFileOpen(false)
-                    onOpen()
-                  }}
-                >
-                  {t('ribbonFileOpen')} <span className="file-menu-key">Ctrl+O</span>
-                </button>
-                <button
-                  disabled={!hasDoc}
-                  onClick={() => {
-                    setFileOpen(false)
-                    onSave()
-                  }}
-                >
-                  {t('ribbonFileSave')} <span className="file-menu-key">Ctrl+S</span>
-                </button>
-                <button
-                  disabled={!hasDoc}
-                  onClick={() => {
-                    setFileOpen(false)
-                    onSaveAs()
-                  }}
-                >
-                  {t('ribbonFileSaveAs')} <span className="file-menu-key">Ctrl+Shift+S</span>
-                </button>
-                <button
-                  disabled={!hasDoc}
-                  onClick={() => {
-                    setFileOpen(false)
-                    onExportPdf()
-                  }}
-                >
-                  {t('ribbonFileExportPdf')}
-                </button>
-                <button
-                  disabled={!hasDoc}
-                  onClick={() => {
-                    setFileOpen(false)
-                    onPrint()
-                  }}
-                >
-                  {t('ribbonFilePrint')} <span className="file-menu-key">Ctrl+P</span>
-                </button>
-                <button
-                  disabled={!hasDoc}
-                  onClick={() => {
-                    setFileOpen(false)
-                    onExportImages()
-                  }}
-                >
-                  {t('ribbonFileExportImages')}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="file-tab-wrap">
+          <button
+            className={`ribbon-tab ribbon-tab-file ${fileOpen ? 'open' : ''}`}
+            onClick={() => setFileOpen((v) => !v)}
+          >
+            {t('ribbonTabFile')}
+          </button>
+          {fileOpen && (
+            <div className="file-menu">
+              <button
+                onClick={() => {
+                  setFileOpen(false)
+                  onOpen()
+                }}
+              >
+                {t('ribbonFileOpen')} <span className="file-menu-key">Ctrl+O</span>
+              </button>
+              <button
+                disabled={!hasDoc}
+                onClick={() => {
+                  setFileOpen(false)
+                  onSave()
+                }}
+              >
+                {t('ribbonFileSave')} <span className="file-menu-key">Ctrl+S</span>
+              </button>
+              <button
+                disabled={!hasDoc}
+                onClick={() => {
+                  setFileOpen(false)
+                  onSaveAs()
+                }}
+              >
+                {t('ribbonFileSaveAs')} <span className="file-menu-key">Ctrl+Shift+S</span>
+              </button>
+              <button
+                disabled={!hasDoc}
+                onClick={() => {
+                  setFileOpen(false)
+                  onExportPdf()
+                }}
+              >
+                {t('ribbonFileExportPdf')}
+              </button>
+              <button
+                disabled={!hasDoc}
+                onClick={() => {
+                  setFileOpen(false)
+                  onPrint()
+                }}
+              >
+                {t('ribbonFilePrint')} <span className="file-menu-key">Ctrl+P</span>
+              </button>
+              <button
+                disabled={!hasDoc}
+                onClick={() => {
+                  setFileOpen(false)
+                  onExportImages()
+                }}
+              >
+                {t('ribbonFileExportImages')}
+              </button>
+            </div>
+          )}
+        </div>
         <button className="qa-btn" title={t('ribbonSaveTip')} disabled={!dirty} onClick={onSave}>
           <IconSave size={15} />
         </button>

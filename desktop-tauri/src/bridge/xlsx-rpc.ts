@@ -36,7 +36,7 @@ const ARCHIVE_COMMANDS = new Set([
   'recalc_cells',
 ])
 
-/** Dev-server base URL; VITE_XLSX_SIDECAR_URL overrides for odd ports. */
+/** XLSX-service base URL; production uses the WOPI host's same-origin proxy. */
 const SERVER_URL =
   (import.meta.env.VITE_XLSX_SIDECAR_URL as string | undefined) ?? 'http://127.0.0.1:8791'
 
@@ -90,17 +90,19 @@ async function httpRoundTrip(envelope: Readonly<Record<string, unknown>>): Promi
     })
   } catch (err) {
     throw new Error(
-      `XLSX dev server unreachable at ${SERVER_URL} (start tools/xlsx-sidecar-server.mjs): ${errMsg(err)}`,
+      `XLSX service unreachable at ${SERVER_URL}: ${errMsg(err)}`,
     )
   }
-  if (!res.ok) throw new Error(`XLSX dev server answered HTTP ${res.status}`)
-  const parsed = (await res.json()) as {
+  const parsed = (await res.json().catch(() => null)) as {
     ok?: boolean
     result?: unknown
     error?: { message?: string }
+  } | null
+  if (!res.ok) {
+    throw new Error(parsed?.error?.message ?? `XLSX service answered HTTP ${res.status}`)
   }
-  if (parsed.ok === true) return { ok: true, result: parsed.result }
-  return { ok: false, error: { message: parsed.error?.message ?? 'XLSX request failed.' } }
+  if (parsed?.ok === true) return { ok: true, result: parsed.result }
+  return { ok: false, error: { message: parsed?.error?.message ?? 'XLSX request failed.' } }
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

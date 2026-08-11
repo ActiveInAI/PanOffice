@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   CaretIcon,
-  GensparkMark,
+  PanAiMark,
   RIBBON_GLYPH_ICONS,
   RedoIcon,
   SaveIcon,
@@ -33,8 +33,8 @@ import type { ConsolidateConfig } from './consolidate'
 import { HeaderFooterDialog, type HeaderFooterResult } from './HeaderFooterDialog'
 import type { HeaderFooterParts } from './edit-journal'
 
-// No File tab: file commands live in the macOS
-// application menu (File → Open/Save/Save As) and the toolbar icons.
+// The in-app File menu calls the same real open/save handlers as the native
+// application menu, so browser and desktop shells expose identical commands.
 const ribbonTabs = ['Home', 'Insert', 'Page Layout', 'Formulas', 'Data', 'Review', 'View'] as const
 
 /// 'Chart Design' is contextual: it exists only while a chart is selected,
@@ -149,7 +149,9 @@ interface ExcelShellProps {
   readonly zoomPercent: number
   /// True when the edit journal has unsaved changes (enables the QAT Save).
   readonly canSave: boolean
+  readonly onOpen: () => void
   readonly onSave: () => void
+  readonly onSaveAs: () => void
   /// QAT redo (workbook history, same path as the app menu's ⇧⌘Z); undo
   /// shares the AI panel's onUndo above.
   readonly onRedo: () => void
@@ -255,7 +257,9 @@ export function ExcelShell({
   statusMessage,
   zoomPercent,
   canSave,
+  onOpen,
   onSave,
+  onSaveAs,
   onRedo,
   autoSave,
   onAutoSaveChange,
@@ -264,6 +268,8 @@ export function ExcelShell({
 }: ExcelShellProps): React.JSX.Element {
   const { t } = useI18n()
   const [activeTab, setActiveTab] = useState<RibbonTab>('Home')
+  const [fileOpen, setFileOpen] = useState(false)
+  const fileMenuRef = useRef<HTMLDivElement>(null)
   const [isCopilotOpen, setIsCopilotOpen] = useState(true)
   const [showFormatCells, setShowFormatCells] = useState(false)
   const [axisSizeTarget, setAxisSizeTarget] = useState<'row' | 'col' | null>(null)
@@ -281,6 +287,23 @@ export function ExcelShell({
   const [showHeaderFooter, setShowHeaderFooter] = useState(false)
   /// Non-null while the Chart Design → Add Chart Element text prompt is open.
   const [chartTextTarget, setChartTextTarget] = useState<ChartTextTarget | null>(null)
+  useEffect(() => {
+    if (!fileOpen) return
+    const closeOutside = (event: MouseEvent): void => {
+      if (event.target instanceof Node && !fileMenuRef.current?.contains(event.target)) {
+        setFileOpen(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setFileOpen(false)
+    }
+    window.addEventListener('mousedown', closeOutside)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('mousedown', closeOutside)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [fileOpen])
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key === '1') {
@@ -316,6 +339,53 @@ export function ExcelShell({
           className={`ribbon-tabs ${IN_TAB ? '' : IS_MAC ? 'ribbon-tabs-mac' : 'ribbon-tabs-win'}`}
           aria-label="Workbook commands"
         >
+          <div className="file-tab-wrap" ref={fileMenuRef}>
+            <button
+              type="button"
+              className={`ribbon-tab-file ${fileOpen ? 'open' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={fileOpen}
+              onClick={() => setFileOpen((open) => !open)}
+            >
+              {t('appFileMenu')}
+            </button>
+            {fileOpen && (
+              <div className="file-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setFileOpen(false)
+                    onOpen()
+                  }}
+                >
+                  {t('appFileOpen')} <span className="file-menu-key">Ctrl+O</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canSave}
+                  onClick={() => {
+                    setFileOpen(false)
+                    onSave()
+                  }}
+                >
+                  {t('appFileSave')} <span className="file-menu-key">Ctrl+S</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canSave}
+                  onClick={() => {
+                    setFileOpen(false)
+                    onSaveAs()
+                  }}
+                >
+                  {t('appFileSaveAs')} <span className="file-menu-key">Ctrl+Shift+S</span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             className="qa-btn"
@@ -411,8 +481,25 @@ export function ExcelShell({
         />
       </header>
 
-      {/* AI panel docks on the left, full height under the ribbon (unified with docs) */}
+      {/* Spreadsheet first, PanAI docked on the right for the full height below the ribbon. */}
       <div className="sheet-body">
+        <div className="sheet-main">
+          {/* Excel's formula-bar row, Name Box only for now (fx bar TBD). */}
+          <div className="name-box-bar">
+            <NameBox activeCellA1={activeCellA1} onGoTo={onGoToReference} />
+            <button
+              className="name-box-goto"
+              title={t('appGoToButtonTitle')}
+              aria-label="Go To"
+              onClick={() => setShowGoTo(true)}
+            >
+              ▾
+            </button>
+          </div>
+          <section className="workbook-area">
+            <div id="univer-container" className="spreadsheet" />
+          </section>
+        </div>
         <AiChatPanel
           isOpen={isCopilotOpen}
           hasContent={sheetHasContent}
@@ -435,23 +522,6 @@ export function ExcelShell({
           onExpand={() => setIsCopilotOpen(true)}
           onCollapse={() => setIsCopilotOpen(false)}
         />
-        <div className="sheet-main">
-          {/* Excel's formula-bar row, Name Box only for now (fx bar TBD). */}
-          <div className="name-box-bar">
-            <NameBox activeCellA1={activeCellA1} onGoTo={onGoToReference} />
-            <button
-              className="name-box-goto"
-              title={t('appGoToButtonTitle')}
-              aria-label="Go To"
-              onClick={() => setShowGoTo(true)}
-            >
-              ▾
-            </button>
-          </div>
-          <section className="workbook-area">
-            <div id="univer-container" className="spreadsheet" />
-          </section>
-        </div>
       </div>
 
       {/* Full-width status bar, unified with docs/slides (Univer's own zoom slider is disabled). */}
@@ -2054,10 +2124,12 @@ function Ribbon({
           onClick={onAiToggle}
         >
           <span className="tool-icon-row">
-            <GensparkMark size={26} />
+            <PanAiMark size={26} />
           </span>
           <span>
-            <strong>Genspark AI</strong>
+            <strong className="notranslate" translate="no">
+              PanAI
+            </strong>
           </span>
         </button>
         <button
@@ -2515,14 +2587,16 @@ function Ribbon({
           </div>
         </div>
       </RibbonGroup>
-      <div className="ribbon-genspark-sep" aria-hidden />
+      <div className="ribbon-panai-sep" aria-hidden />
       <button
-        className="ribbon-genspark-btn"
+        className="ribbon-panai-btn"
         title={t('aiOpenAssistant')}
         onClick={() => onCommand('ai-toggle-panel')}
       >
-        <GensparkMark size={28} />
-        <span>Genspark</span>
+        <PanAiMark size={28} />
+        <span className="notranslate" translate="no">
+          PanAI
+        </span>
       </button>
     </div>
   )

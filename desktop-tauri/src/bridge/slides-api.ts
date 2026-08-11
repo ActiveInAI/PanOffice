@@ -48,7 +48,7 @@ type SlidesLang = 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'th' | 'id' |
 
 function getLanguage(): Promise<SlidesLang> {
   const stored = localStorage.getItem(LANG_KEY)
-  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as SlidesLang) : 'en'
+  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as SlidesLang) : 'zh'
   return Promise.resolve(lang)
 }
 

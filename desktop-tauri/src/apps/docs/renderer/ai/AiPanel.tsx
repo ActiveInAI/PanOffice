@@ -14,7 +14,6 @@ import { createElectronTransport } from './transport'
 import { useI18n, t as tModule, aiLangDirective, type StringKey } from '../i18n/locale'
 import { Markdown } from '@genoffice/ui'
 import { AiComposer, AiTypingIndicator } from '@genoffice/ui'
-import { GensparkMark } from '../components/icons'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
@@ -24,7 +23,6 @@ import {
   IconNewChat,
   IconPaperclip,
   IconRefresh,
-  IconSidebarCollapse,
 } from '../components/icons'
 
 interface Snapshot {
@@ -128,12 +126,8 @@ interface AiPanelProps {
   numIdFallback?: NumIds | null
   /** preset instruction pushed from the ribbon or start screen; autoRun sends it immediately */
   preset?: { text: string; nonce: number; autoRun?: boolean } | null
-  /** false shows only the collapsed rail; the component stays mounted so panel state survives */
+  /** false renders no chrome or rail; the component stays mounted so panel state survives */
   open?: boolean
-  /** expand from the collapsed rail */
-  onExpand?: () => void
-  /** collapse the panel to the sidebar rail */
-  onCollapse?: () => void
   /** Absolute path of the currently open file (used for chat-history persistence) */
   filePath?: string | null
 }
@@ -146,8 +140,6 @@ export function AiPanel({
   numIdFallback,
   preset,
   open = true,
-  onExpand,
-  onCollapse,
   filePath,
 }: AiPanelProps) {
   const { t } = useI18n()
@@ -661,18 +653,13 @@ export function AiPanel({
     window.addEventListener('pointerup', onUp)
   }
 
-  // collapsed: rail only — after all hooks, so the instance and its state survive
-  if (!open) {
-    return (
-      <button className="ai-rail" title={t('appExpandAiPanel')} onClick={onExpand}>
-        <GensparkMark size={22} />
-      </button>
-    )
-  }
+  // Keep the instance mounted for in-flight work, but closed means zero UI and zero width.
+  if (!open) return null
 
   return (
     <aside
       ref={asideRef}
+      data-testid="panai-panel"
       style={{ width: '100%' }}
       className={`ai-panel${dragOver ? ' ai-panel-dragover' : ''}${resizing ? ' ai-panel-resizing' : ''}`}
       onDragOver={(e) => {
@@ -688,30 +675,18 @@ export function AiPanel({
       onDrop={onDrop}
     >
       <div
-        className="ai-panel-resizer"
+        className="ai-panel-resizer notranslate"
+        translate="no"
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
         aria-label={t('aiPanelTitle')}
       />
-      <div className="ai-panel-header">
-        <span className="ai-panel-title">
-          <GensparkMark size={22} />
-          {t('aiPanelTitle')}
-        </span>
-        <div className="ai-panel-header-actions">
-          {chat.length > 0 && (
-            <button className="ai-header-btn" onClick={newChat} title={t('aiNewChatTitle')}>
-              <IconNewChat size={16} />
-            </button>
-          )}
-          {onCollapse && (
-            <button className="ai-header-btn" onClick={onCollapse} title={t('aiCollapseTitle')}>
-              <IconSidebarCollapse size={16} />
-            </button>
-          )}
-        </div>
-      </div>
+      {chat.length > 0 && (
+        <button className="ai-panel-utility" onClick={newChat} title={t('aiNewChatTitle')}>
+          <IconNewChat size={16} />
+        </button>
+      )}
 
       <div ref={logRef} className="ai-chat" onScroll={onLogScroll}>
         {/* past conversation (read-only transcript, not fed to the model), shown continuously with the current turn */}

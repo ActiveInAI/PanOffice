@@ -19,7 +19,9 @@ export function testConfig(overrides: Partial<WopiHostConfig> = {}): WopiHostCon
     dataDir: '',
     devToken: 'devtoken',
     allowDevToken: true,
+    devUiEnabled: true,
     devTokens: {},
+    sharedToken: null,
     jwtSecret: null,
     jwksUrl: null,
     proofRequired: false,
@@ -31,6 +33,11 @@ export function testConfig(overrides: Partial<WopiHostConfig> = {}): WopiHostCon
     collaboraPublicUrl: 'http://127.0.0.1:1',
     pdfAppUrl: 'http://shell.test',
     pdfAppOrigin: 'http://shell.test',
+    shellDir: null,
+    xlsxRpcUrl: null,
+    panAiBridgeUrl: null,
+    panAiBridgeToken: null,
+    panAiModel: 'gpt-5.6-sol',
     ...overrides,
   }
 }

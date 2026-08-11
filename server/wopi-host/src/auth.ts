@@ -4,6 +4,7 @@
  * secret or RS256 via JWKS). Produces a WopiUser with per-file permissions.
  */
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
+import { timingSafeEqual } from 'node:crypto'
 import type { PermissionLevel, PermissionSpec, WopiHostConfig, WopiUser } from './config.js'
 import { parsePermissionSpec } from './config.js'
 
@@ -38,6 +39,10 @@ export class TokenResolver {
   async resolve(token: string): Promise<WopiUser | null> {
     if (!token) return null
 
+    if (this.cfg.sharedToken && sameToken(token, this.cfg.sharedToken)) {
+      return { userId: 'eflow-wopi', name: 'EFlow', permissions: 'read-write' }
+    }
+
     const dev = this.cfg.devTokens[token]
     if (dev) return { userId: dev.userId, name: dev.name, permissions: dev.permissions }
 
@@ -68,6 +73,12 @@ export class TokenResolver {
     }
     return null
   }
+}
+
+function sameToken(left: string, right: string): boolean {
+  const a = Buffer.from(left)
+  const b = Buffer.from(right)
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 /** Tokens the dev UI may offer in its chooser (static map + shared dev token). */

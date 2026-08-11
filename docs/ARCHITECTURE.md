@@ -16,6 +16,11 @@ PanOffice combines reusable open-source engines with our own services:
 | AI capabilities | **Arch-GPT LLM gateway** (OpenAI-compatible) | In-house models/routing; no third-party AI accounts |
 | Cloud file access / sync | **PanOffice Server** (new, `server/`) | Thin layer we own; WOPI is the only contract Collabora speaks |
 
+**Update (M8, 2026-08-10):** the web mainline is now our own GenOffice
+editors (the `desktop-tauri/` shell served in the browser, opening and
+saving docx/xlsx/pptx/pdf through the wopi-host); Collabora Online remains
+as the optional real-time collaboration backend.
+
 Two editing engines serve different contexts over the same OOXML files —
 they are **not merged**:
 

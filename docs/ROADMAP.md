@@ -117,6 +117,19 @@ shipping product); account + AI use **Arch-GPT**. See
 - CI/CD: fork CI, signed Tauri installers for Windows/macOS, versioned
   server releases.
 
+## M8 — unified on GenOffice engines (web)
+
+- All four formats (docx/xlsx/pptx/pdf) open and save in **our own
+  GenOffice editors** in the browser, with the wopi-host as the unified
+  file backend: `GET /files.json` + CORS-enabled `/upload`, the shell home
+  becomes a real file manager (list/open/upload against the wopi-host),
+  and the wopi-host index page links office files to the shell editors
+  with Collabora kept as the collaboration option.
+  **[done 2026-08-10]** — wopi-host 65 vitest cases green (incl. the new
+  files.json/CORS/index-page suites); shell `build:ui` + 1832 vitest
+  green; 11 playwright specs green (8 existing + docs/sheets/slides web
+  specs proving real-UI edits land on the server disk via WOPI PutFile).
+
 ## M8+ — Parking lot
 
 - Mobile via Collabora's mobile apps.

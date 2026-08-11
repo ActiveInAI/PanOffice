@@ -64,6 +64,16 @@ describe('version archiving', () => {
     )
   })
 
+  it('keeps only the live file when the version cap is zero', async () => {
+    const srv = await startTestServer({ versionCap: 0 })
+    cleanups.push(srv.close)
+
+    const res = await put(srv.base, 'latest-only')
+    expect(res.status).toBe(200)
+    expect(await readFile(join(srv.dataDir, 'a.docx'), 'utf8')).toBe('latest-only')
+    await expect(readdir(join(srv.dataDir, '.versions'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('lists versions via GET /wopi/files/:id/versions and reports currentVersion coherently', async () => {
     const srv = await startTestServer()
     cleanups.push(srv.close)

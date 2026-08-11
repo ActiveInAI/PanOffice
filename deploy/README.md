@@ -25,6 +25,25 @@ docker compose up --build
 | wopi-host → discovery | `http://collabora:9980/hosting/discovery` | `COLLABORA_INTERNAL_URL` |
 | coolwsd → WOPI callbacks | `http://wopi-host:3000/wopi/...` | `WOPI_PUBLIC_BASE` (+ `aliasgroup1` allowlist) |
 
+## Native XLSX service
+
+The browser Sheets editor uses a loopback-only native XLSX engine. Production
+serves it through the WOPI host's origin-checked `/xlsx-sidecar/rpc` route;
+the native port is never exposed to the LAN. User-service templates live in
+`systemd/`; install the sidecar unit plus the WOPI drop-in, then build the web
+shell with `npm run build:web` from `desktop-tauri/`. That dedicated build mode
+sets `VITE_XLSX_SIDECAR_URL=/xlsx-sidecar`, so remote browsers use the WOPI
+host's same-origin proxy instead of their own loopback interface.
+
+## Server-managed PanAI
+
+Word, Excel, PowerPoint, and PDF share the WOPI host's same-origin
+`/panai/turn` route. Install
+`systemd/panoffice-wopi.service.d/30-panai-bridge.conf` to connect that route
+to the loopback Arch-GPT CLI bridge. The drop-in loads the bearer token with
+systemd `LoadCredential`; no model credential is shipped in the web bundle or
+stored in browser localStorage.
+
 ## Warnings
 
 - **Dev only.** The WOPI host uses one shared token (`WOPI_TOKEN`, default

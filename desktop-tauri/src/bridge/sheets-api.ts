@@ -296,11 +296,7 @@ function pickFile(accept: string, multiple = false): Promise<FileList | null> {
 async function selectWorkbook(): Promise<WorkbookFile | null> {
   const pending = consumePendingSrc()
   if (pending) {
-    try {
-      return await openWorkbookPath(pending)
-    } catch {
-      return null
-    }
+    return openWorkbookPath(pending)
   }
   // TODO(M3): native open dialog (tauri plugin-dialog) returning a real path
   const files = await pickFile('.xlsx,.xls,.csv')
@@ -310,11 +306,7 @@ async function selectWorkbook(): Promise<WorkbookFile | null> {
   // Picked files have no local path in a webview; park the bytes in the
   // overlay under the file name so the workbook is reopenable in-session.
   await platform.writeFile(file.name, bytes)
-  try {
-    return await openWorkbookPath(file.name)
-  } catch {
-    return null
-  }
+  return openWorkbookPath(file.name)
 }
 
 // ---- range / formulas / recalc / media / pivot ----
@@ -1074,7 +1066,7 @@ type SheetsLang = 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'th' | 'id' |
 
 function getLanguage(): Promise<SheetsLang> {
   const stored = localStorage.getItem(LANG_KEY)
-  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as SheetsLang) : 'en'
+  const lang = (LANGS as readonly string[]).includes(stored ?? '') ? (stored as SheetsLang) : 'zh'
   return Promise.resolve(lang)
 }
 

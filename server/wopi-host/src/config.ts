@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 /**
  * Configuration for the WOPI host: env parsing plus the token model types.
  * Kept separate from the HTTP layer so tests can inject configs directly.
@@ -25,8 +27,12 @@ export interface WopiHostConfig {
   /** Shared dev token; honoured only when allowDevToken is true. */
   devToken: string
   allowDevToken: boolean
+  /** Enable unauthenticated development file listing/upload/edit pages. */
+  devUiEnabled: boolean
   /** Static dev token map (WOPI_TOKENS_JSON): token -> user. */
   devTokens: Record<string, DevTokenEntry>
+  /** Owner-only shared token used by the authenticated EFlow reverse proxy. */
+  sharedToken: string | null
   /** HS256 shared secret for Arch-GPT JWTs (ARCHGPT_JWT_SECRET). */
   jwtSecret: string | null
   /** JWKS endpoint for RS256 Arch-GPT JWTs (ARCHGPT_JWT_JWKS_URL). */
@@ -49,6 +55,16 @@ export interface WopiHostConfig {
   pdfAppUrl: string
   /** Origin allowed to call WOPI endpoints cross-origin (the web shell). */
   pdfAppOrigin: string
+  /** Directory of the prebuilt PanOffice web shell (served at `/`). */
+  shellDir: string | null
+  /** Loopback-only XLSX RPC endpoint proxied to the same-origin web shell. */
+  xlsxRpcUrl: string | null
+  /** Loopback-only OpenAI-compatible bridge used by the server-managed PanAI route. */
+  panAiBridgeUrl: string | null
+  /** Server-only bearer token loaded from a systemd credential file. */
+  panAiBridgeToken: string | null
+  /** Model id forced by the server for every PanAI turn. */
+  panAiModel: string
 }
 
 function isPermissionLevel(v: unknown): v is PermissionLevel {
@@ -100,6 +116,36 @@ function stripSlashes(url: string): string {
   return url.replace(/\/+$/, '')
 }
 
+function parseLoopbackHttpUrl(value: string | undefined, envName: string): string | null {
+  if (!value?.trim()) return null
+  const normalized = stripSlashes(value.trim())
+  const parsed = new URL(normalized)
+  if (
+    parsed.protocol !== 'http:' ||
+    !new Set(['127.0.0.1', 'localhost', '[::1]']).has(parsed.hostname)
+  ) {
+    throw new Error(`${envName} must be an http:// loopback URL`)
+  }
+  return normalized
+}
+
+function readTokenFile(path: string | undefined, envName: string): string | null {
+  if (!path?.trim()) return null
+  const tokenPath = path.trim()
+  if (!tokenPath.startsWith('/')) throw new Error(`${envName} must be an absolute path`)
+  const token = readFileSync(tokenPath, 'utf8').trim()
+  if (token.length < 32 || token.length > 512 || /[\x00-\x1f\x7f]/.test(token)) {
+    throw new Error(`${envName} is invalid`)
+  }
+  return token
+}
+
+function parsePanAiModel(value: string | undefined): string {
+  const model = value?.trim() || 'gpt-5.6-sol'
+  if (!/^[A-Za-z0-9._:/-]{1,128}$/.test(model)) throw new Error('PANAI_MODEL is invalid')
+  return model
+}
+
 export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHostConfig {
   const port = Number(env.PORT ?? 3000)
   return {
@@ -107,7 +153,9 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHos
     dataDir: env.DATA_DIR ?? './data/files',
     devToken: env.WOPI_TOKEN ?? 'devtoken',
     allowDevToken: envBool(env.WOPI_ALLOW_DEV_TOKEN, false),
+    devUiEnabled: envBool(env.WOPI_DEV_UI_ENABLED, false),
     devTokens: parseDevTokens(env.WOPI_TOKENS_JSON),
+    sharedToken: readTokenFile(env.WOPI_SHARED_TOKEN_FILE, 'WOPI_SHARED_TOKEN_FILE'),
     jwtSecret: env.ARCHGPT_JWT_SECRET || null,
     jwksUrl: env.ARCHGPT_JWT_JWKS_URL || null,
     proofRequired: envBool(env.WOPI_PROOF_REQUIRED, false),
@@ -119,5 +167,10 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHos
     collaboraPublicUrl: stripSlashes(env.COLLABORA_PUBLIC_URL ?? env.COLLABORA_INTERNAL_URL ?? 'http://localhost:9980'),
     pdfAppUrl: stripSlashes(env.PDF_APP_URL ?? 'http://localhost:4180'),
     pdfAppOrigin: stripSlashes(env.PDF_APP_ORIGIN ?? env.PDF_APP_URL ?? 'http://localhost:4180'),
+    shellDir: env.SHELL_DIR?.trim() ? env.SHELL_DIR.trim() : null,
+    xlsxRpcUrl: parseLoopbackHttpUrl(env.XLSX_RPC_URL, 'XLSX_RPC_URL'),
+    panAiBridgeUrl: parseLoopbackHttpUrl(env.PANAI_BRIDGE_URL, 'PANAI_BRIDGE_URL'),
+    panAiBridgeToken: readTokenFile(env.PANAI_BRIDGE_TOKEN_FILE, 'PANAI_BRIDGE_TOKEN_FILE'),
+    panAiModel: parsePanAiModel(env.PANAI_MODEL),
   }
 }

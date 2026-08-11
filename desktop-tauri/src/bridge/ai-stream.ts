@@ -1,11 +1,9 @@
 /**
  * Shared in-webview AI bridge behind window.pdfApi / window.desktop.
  *
- * Upstream, the Electron main process proxied AI calls (avoids renderer CORS
- * and keeps provider keys out of the webview); the Tauri shell has no main
- * process, so streaming runs directly in the webview via
- * `@genoffice/ai-provider`'s streamForProvider/chatForProvider. Settings live
- * in localStorage (upstream persisted ai-settings.json under userData).
+ * Hosted PanOffice uses the same-origin, server-managed PanAI bridge so model
+ * credentials never enter the webview. Standalone Tauri/dev builds retain the
+ * direct-provider fallback via `@genoffice/ai-provider`.
  *
  * Extracted from pdf-api.ts (M2) so the docs bridge reuses the identical
  * code path; pdf behavior is unchanged.
@@ -23,12 +21,29 @@ import type {
   AiStreamChunk,
   AiStreamRequest,
 } from '@genoffice/ai-provider'
+import { isHostedByEflow, runEflowTurn } from './eflow-ai'
+import { getServerPanAiConfig, runServerPanAiTurn } from './server-panai'
 
 const AI_KEY = 'panoffice.ai'
 /** Same default as the upstream Electron main handlers (sheets-main / ai-ipc) */
 const DEFAULT_MAX_TOKENS = 8192
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+function managedSettings(defaults: AiSettings, model: string): AiSettings {
+  return {
+    ...defaults,
+    provider: 'archgpt',
+    providers: {
+      ...defaults.providers,
+      archgpt: {
+        apiKey: 'server-managed',
+        model,
+        baseUrl: '/panai/v1',
+      },
+    },
+  }
+}
 
 export interface AiBridge {
   getAiSettings(): Promise<AiSettings>
@@ -47,14 +62,19 @@ export function createAiBridge(): AiBridge {
   const streamHandlers = new Set<(chunk: AiStreamChunk) => void>()
   const activeStreams = new Map<string, AbortController>()
 
-  function getAiSettings(): Promise<AiSettings> {
+  async function getAiSettings(): Promise<AiSettings> {
     const defaults = defaultAiSettings()
+    // These sentinel settings contain no credential. They only satisfy the
+    // renderer's "configured" guard; the actual model and token stay server-side.
+    if (isHostedByEflow()) return managedSettings(defaults, 'gpt-5.6-sol')
+    const hosted = await getServerPanAiConfig()
+    if (hosted.enabled) return managedSettings(defaults, hosted.model)
     const raw = localStorage.getItem(AI_KEY)
-    if (!raw) return Promise.resolve(defaults)
+    if (!raw) return defaults
     try {
-      return Promise.resolve(resolveAiSettings(JSON.parse(raw) as Partial<AiSettings>, defaults))
+      return resolveAiSettings(JSON.parse(raw) as Partial<AiSettings>, defaults)
     } catch {
-      return Promise.resolve(defaults)
+      return defaults
     }
   }
 
@@ -65,6 +85,31 @@ export function createAiBridge(): AiBridge {
 
   /** One-shot chat, matching the upstream 'ai:chat' handler's error shapes. */
   async function aiChat(request: AiChatRequest): Promise<AiChatResponse> {
+    if (isHostedByEflow()) {
+      try {
+        const controller = new AbortController()
+        const result = await runEflowTurn(
+          { settings: request.settings, system: request.system, messages: [{ role: 'user', text: request.user }], tools: [] },
+          controller.signal,
+        )
+        return { ok: true, content: result.text }
+      } catch (err) {
+        return { ok: false, error: errMsg(err) }
+      }
+    }
+    const hosted = await getServerPanAiConfig()
+    if (hosted.enabled) {
+      try {
+        const controller = new AbortController()
+        const result = await runServerPanAiTurn(
+          { system: request.system, messages: [{ role: 'user', text: request.user }], tools: [] },
+          controller.signal,
+        )
+        return { ok: true, content: result.text }
+      } catch (err) {
+        return { ok: false, error: errMsg(err) }
+      }
+    }
     const { settings, system, user } = request
     const provider = settings.provider
     const config = settings.providers?.[provider]
@@ -102,6 +147,27 @@ export function createAiBridge(): AiBridge {
     const controller = new AbortController()
     activeStreams.set(requestId, controller)
     try {
+      if (isHostedByEflow()) {
+        const result = await runEflowTurn(request, controller.signal)
+        if (result.toolCalls.length > 0) {
+          for (const toolCall of result.toolCalls) send({ requestId, type: 'tool-call', toolCall })
+        } else if (result.text) {
+          send({ requestId, type: 'delta', text: result.text })
+        }
+        send({ requestId, type: 'done' })
+        return
+      }
+      const hosted = await getServerPanAiConfig()
+      if (hosted.enabled) {
+        const result = await runServerPanAiTurn(request, controller.signal)
+        if (result.toolCalls.length > 0) {
+          for (const toolCall of result.toolCalls) send({ requestId, type: 'tool-call', toolCall })
+        } else if (result.text) {
+          send({ requestId, type: 'delta', text: result.text })
+        }
+        send({ requestId, type: 'done' })
+        return
+      }
       await streamForProvider(
         provider,
         config,
