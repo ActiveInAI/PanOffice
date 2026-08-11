@@ -18,7 +18,9 @@ const genoffice = (name: string, entry = 'index.ts') =>
 
 // Tauri expects a fixed dev port and no clearing of the screen.
 export default defineConfig({
-  base: process.env.PANOFFICE_WEB_BASE || '/',
+  // Relative assets keep the same build valid at the origin root (standalone
+  // PanOffice/Tauri) and below EFlow's authenticated /panoffice/ mount.
+  base: process.env.PANOFFICE_WEB_BASE || './',
   plugins: [
     react(),
     // pdfjs cmaps/standard fonts/wasm, served at /pdfjs/ (see ASSET_BASE in the pdf renderer)

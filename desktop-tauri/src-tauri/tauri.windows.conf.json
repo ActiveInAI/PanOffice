@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../native/xlsx-engine/target/release/xlsx-sidecar.exe": "native/xlsx-engine/xlsx-sidecar.exe"
+    }
+  }
+}

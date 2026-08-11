@@ -3446,7 +3446,7 @@ export const aiStrings = defineStrings({
   },
   'zh-TW': {
     aiInputPlaceholderGen: '描述要生成的簡報,或直接提問',
-    aiEmptyGenTitle: '讓 AI 為你生成簡報',
+    aiEmptyGenTitle: '讓PanAI為你生成簡報',
     aiEmptyGenBody1: '描述主題、場合和大致頁數,',
     aiEmptyGenBody2: 'AI 直接生成整份簡報。',
     aiStarterGenReport: '幫我做一份專案季度匯報',
@@ -3475,7 +3475,7 @@ export const aiStrings = defineStrings({
     aiNewChat: '新對話',
     aiCollapsePanel: '收合面板',
     aiHistorySep: '—— 以上是歷史對話 ——',
-    aiEmptyTitle: '讓 AI 幫你打磨投影片',
+    aiEmptyTitle: '讓PanAI幫你打磨投影片',
     aiEmptyBody1: '可以下達指令,也可以直接提問;',
     aiEmptyBody2: '選取元素後,改寫類指令預設作用於選取的元素。',
     aiThinking: '思考中',

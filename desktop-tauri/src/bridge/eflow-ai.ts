@@ -1,5 +1,9 @@
 import type { AgentMessage, AgentToolCall, AgentToolDef } from '@genoffice/agent-core'
 import type { AiSettings, AiStreamRequest } from '@genoffice/ai-provider'
+import {
+  resolveBrowserPanAiModel,
+  type PanAiModelOption,
+} from './panai-models'
 
 interface EflowEnvelope<T> {
   success: boolean
@@ -33,6 +37,7 @@ export interface EflowTransportDeps {
   fetch: typeof fetch
   openSocket(): SocketLike
   csrfToken(): string
+  selectedModel?(): Promise<PanAiModelOption>
 }
 
 export interface EflowTurnResult {
@@ -57,6 +62,7 @@ function browserDeps(): EflowTransportDeps {
         .find((part) => part.startsWith('panai-csrf-token='))
       return entry ? decodeURIComponent(entry.slice('panai-csrf-token='.length)) : ''
     },
+    selectedModel: () => resolveBrowserPanAiModel(true),
   }
 }
 
@@ -73,6 +79,26 @@ export function selectEflowAgent(settings: AiSettings): string {
   if (hint.includes('gemini') || settings.provider === 'gemini') return 'gemini'
   if (hint.includes('claude') || settings.provider === 'anthropic') return 'claude'
   return 'codex'
+}
+
+export function conversationExtraForModel(
+  settings: AiSettings,
+  selected?: PanAiModelOption,
+): Record<string, unknown> {
+  const agent = selected?.agent ?? selectEflowAgent(settings)
+  return {
+    backend: agent,
+    agent_name: agent,
+    session_mode: 'skipAll',
+    custom_workspace: false,
+    ...(selected?.model ? { current_model_id: selected.model } : {}),
+    ...(selected?.providerId
+      ? {
+          provider_id: selected.providerId,
+          provider_model_id: selected.model,
+        }
+      : {}),
+  }
 }
 
 function messageForWire(message: AgentMessage): Record<string, unknown> {
@@ -234,18 +260,13 @@ export async function runEflowTurn(
 
   try {
     await opened
-    const agent = selectEflowAgent(request.settings)
+    const selected = deps.selectedModel ? await deps.selectedModel() : undefined
     const conversation = await requestJson<ConversationResponse>(deps, '/api/conversations', {
       method: 'POST',
       body: JSON.stringify({
         type: 'acp',
         name: 'PanOffice 临时任务',
-        extra: {
-          backend: agent,
-          agent_name: agent,
-          session_mode: 'skipAll',
-          custom_workspace: false,
-        },
+        extra: conversationExtraForModel(request.settings, selected),
       }),
     })
     conversationId = conversation.id

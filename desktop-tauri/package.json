@@ -15,7 +15,8 @@
     "dev:xlsx-sidecar": "node tools/xlsx-sidecar-server.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build:sidecar": "cargo build --manifest-path native/xlsx-engine/Cargo.toml --release",
+    "build": "npm run build:ui && npm run build:sidecar && tauri build"
   },
   "dependencies": {
     "@fluentui/react-icons": "2.0.334",

@@ -1788,7 +1788,7 @@ export const aiStrings = defineStrings({
     aiCmdSkipped: ' ({count} सुरक्षित ब्लॉक छोड़े गए)',
   },
   'zh-TW': {
-    aiEmptyDraftTitle: '讓 AI 幫你從零起草',
+    aiEmptyDraftTitle: '讓PanAI幫你從零起草',
     aiEmptyDraftBody1: '描述主題、要點或貼上參考素材,',
     aiEmptyDraftBody2: 'AI 直接為你寫出初稿。',
     aiStarterSummarize: '總結這篇文件的要點',
@@ -1806,7 +1806,7 @@ export const aiStrings = defineStrings({
     aiNewChatTitle: '新對話',
     aiCollapseTitle: '收合面板',
     aiHistorySep: '—— 以上是歷史對話 ——',
-    aiEmptyTitle: '讓 AI 幫你寫作和修改',
+    aiEmptyTitle: '讓PanAI幫你寫作和修改',
     aiEmptyBody1: '可以下達指令,也可以直接提問;',
     aiEmptyBody2: '選取文字後,改寫類指令預設作用於選取範圍。',
     aiStarterWeeklyReport: '幫我寫一份專案週報',

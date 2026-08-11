@@ -1,0 +1,22 @@
+[Unit]
+Description=PanOffice public-domain proxy to ARM deployment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/panspace/panoffice
+Environment=PANOFFICE_DOMAIN_PROXY_HOST=127.0.0.1
+Environment=PANOFFICE_DOMAIN_PROXY_PORT=3000
+Environment=PANOFFICE_DOMAIN_PROXY_UPSTREAM=http://192.168.1.100:3210
+Environment=PANOFFICE_DOMAIN_PUBLIC_ORIGIN=https://panoffice.ko.tw.cn
+ExecStart=/usr/local/bin/node tools/panoffice-domain-proxy.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target

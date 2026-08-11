@@ -19,6 +19,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use serde_json::Value;
+use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
@@ -48,20 +49,25 @@ pub struct XlsxRpcState {
     child: Mutex<Option<Arc<SidecarChild>>>,
 }
 
-fn sidecar_path() -> Result<String, String> {
+fn sidecar_path(app: &tauri::AppHandle) -> Result<String, String> {
     if let Ok(path) = std::env::var("XLSX_SIDECAR_PATH") {
         if !path.is_empty() {
             return Ok(path);
         }
     }
+    let binary_name = format!("xlsx-sidecar{}", std::env::consts::EXE_SUFFIX);
     let relative = Path::new("native")
         .join("xlsx-engine")
         .join("target")
         .join("release")
-        .join("xlsx-sidecar");
-    // dev: cwd is src-tauri, so the binary lives one level up; bundled
-    // layouts are a bundling decision (TODO M3: tauri sidecar resource).
+        .join(&binary_name);
+    let bundled = Path::new("native").join("xlsx-engine").join(&binary_name);
+    // In development cwd is src-tauri, so the release binary lives one level
+    // up. Installers place it under the app resource directory.
     let mut candidates = vec![relative.clone()];
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join(&bundled));
+    }
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("..").join(&relative));
         if let Ok(exe) = std::env::current_exe() {
@@ -89,12 +95,15 @@ fn fail_all(pending: &PendingMap, message: String) {
     });
 }
 
-async fn ensure_child(state: &XlsxRpcState) -> Result<Arc<SidecarChild>, String> {
+async fn ensure_child(
+    state: &XlsxRpcState,
+    app: &tauri::AppHandle,
+) -> Result<Arc<SidecarChild>, String> {
     let mut guard = state.child.lock().await;
     if let Some(child) = guard.as_ref() {
         return Ok(child.clone());
     }
-    let binary = sidecar_path()?;
+    let binary = sidecar_path(app)?;
     let mut process: Child = Command::new(binary)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -302,6 +311,7 @@ async fn handle_host(command: &str, request: &Value) -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn xlsx_rpc(
+    app: tauri::AppHandle,
     state: tauri::State<'_, XlsxRpcState>,
     request: Value,
 ) -> Result<Value, String> {
@@ -320,7 +330,7 @@ pub async fn xlsx_rpc(
         return handle_host(&command, &request).await;
     }
 
-    let child = ensure_child(&state).await?;
+    let child = ensure_child(&state, &app).await?;
     let (tx, rx) = oneshot::channel();
     child.pending.lock().await.insert(request_id.clone(), tx);
     let line = format!("{}\n", serde_json::to_string(&request).map_err(|e| e.to_string())?);

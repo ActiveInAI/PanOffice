@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import { AgentLoop } from '@genoffice/agent-core'
+import { AgentLoop, composeSkills, type AgentImage } from '@genoffice/agent-core'
 import type { AiSettings } from '@genoffice/ai-provider'
+import type { AttachmentAddResult, AttachmentMeta } from '../../../docs/shared/ipc'
+import { ATTACHMENT_IMAGE_EXTS } from '../../../docs/shared/ipc'
 import { AiComposer, AiTypingIndicator } from '@genoffice/ui'
+import { PanAiModelSelector } from '../../../../components/PanAiModelSelector'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
 import { Markdown } from '@genoffice/ui'
 import sendEnterOn from '../assets/send-enter-on.png'
 import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
+import attachIcon from '../../../docs/renderer/assets/attach-icon.png'
 import { createPdfSkill } from './pdf-skill'
+import { createFilesSkill } from '../../../docs/renderer/ai/files-skill'
 import { createPdfTransport } from './transport'
 import type { PdfAiDeps } from './tools'
 
@@ -49,6 +54,10 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
   const [chat, setChat] = useState<ChatEntry[]>([])
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
+  const [attachments, setAttachments] = useState<AttachmentMeta[]>([])
+  const [attachNotice, setAttachNotice] = useState<string | null>(null)
+  const attachmentsRef = useRef(attachments)
+  attachmentsRef.current = attachments
   const [phase, setPhase] = useState<Phase>('thinking')
   const chatRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -102,7 +111,10 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
     }
     loopRef.current = new AgentLoop({
       transport: createPdfTransport(() => settingsRef.current!),
-      skill: createPdfSkill(deps),
+      skill: composeSkills('pdf+files', '', [
+        createPdfSkill(deps),
+        createFilesSkill(() => attachmentsRef.current),
+      ]),
       systemSuffix: () => aiLangDirective(langRef.current),
       events: {
         onText: (text) => {
@@ -178,6 +190,35 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
   }
 
+  const collectImageAttachments = async (): Promise<AgentImage[]> => {
+    const images: AgentImage[] = []
+    const failures: string[] = []
+    for (const attachment of attachmentsRef.current.filter((item) => ATTACHMENT_IMAGE_EXTS.has(item.ext)).slice(0, 20)) {
+      const result = await window.desktop.readAttachmentImage(attachment.path)
+      if (result.ok && result.base64 && result.mime) images.push({ base64: result.base64, mime: result.mime })
+      else failures.push(result.error ?? `${attachment.name}: 读取失败`)
+    }
+    if (failures.length > 0) {
+      setAttachNotice(failures.join('; '))
+      window.setTimeout(() => setAttachNotice(null), 5000)
+    }
+    return images
+  }
+
+  const mergeAttachments = (result: AttachmentAddResult | null): void => {
+    if (!result) return
+    if (result.accepted.length > 0) {
+      setAttachments((current) => {
+        const known = new Set(current.map((item) => item.path))
+        return [...current, ...result.accepted.filter((item) => !known.has(item.path))]
+      })
+    }
+    if (result.rejected.length > 0) {
+      setAttachNotice(result.rejected.join('; '))
+      window.setTimeout(() => setAttachNotice(null), 5000)
+    }
+  }
+
   const send = (text: string): void => {
     const instruction = text.trim()
     const loop = loopRef.current
@@ -194,7 +235,8 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
     void (async () => {
       try {
         settingsRef.current = await window.pdfApi.getAiSettings()
-        await loop.run(instruction)
+        const images = await collectImageAttachments()
+        loop.run(instruction, images)
       } catch (err) {
         patchLast({
           streaming: false,
@@ -321,6 +363,25 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
       </div>
 
       <div className="ai-composer">
+        {attachments.length > 0 && (
+          <div className="ai-attachments">
+            {attachments.map((attachment) => (
+              <span key={attachment.path} className="ai-attachment-chip" title={attachment.path}>
+                {attachment.name}
+                <button
+                  type="button"
+                  className="ai-attachment-remove"
+                  title="移除附件"
+                  aria-label={`移除附件 ${attachment.name}`}
+                  onClick={() => setAttachments((current) => current.filter((item) => item.path !== attachment.path))}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {attachNotice && <div className="ai-attach-notice">{attachNotice}</div>}
         <AiComposer
           value={prompt}
           busy={busy}
@@ -333,6 +394,20 @@ export function AiPanel({ api }: { api: PdfAiDeps }): ReactElement {
           sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
           sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
           stopIcon={<img src={sendStop} alt="" aria-hidden />}
+          footerStart={
+            <>
+              <button
+                type="button"
+                className="ai-attach-btn"
+                title="添加文件"
+                aria-label="添加文件"
+                onClick={() => void window.desktop.pickAttachments().then(mergeAttachments)}
+              >
+                <img src={attachIcon} alt="" aria-hidden />
+              </button>
+              <PanAiModelSelector />
+            </>
+          }
           onChange={setPrompt}
           onSend={() => send(prompt)}
           onStop={stop}

@@ -22,6 +22,7 @@ import type {
   AiStreamRequest,
 } from '@genoffice/ai-provider'
 import { isHostedByEflow, runEflowTurn } from './eflow-ai'
+import { resolveBrowserPanAiModel } from './panai-models'
 import { getServerPanAiConfig, runServerPanAiTurn } from './server-panai'
 
 const AI_KEY = 'panoffice.ai'
@@ -66,7 +67,10 @@ export function createAiBridge(): AiBridge {
     const defaults = defaultAiSettings()
     // These sentinel settings contain no credential. They only satisfy the
     // renderer's "configured" guard; the actual model and token stay server-side.
-    if (isHostedByEflow()) return managedSettings(defaults, 'gpt-5.6-sol')
+    if (isHostedByEflow()) {
+      const selected = await resolveBrowserPanAiModel(true)
+      return managedSettings(defaults, selected.model)
+    }
     const hosted = await getServerPanAiConfig()
     if (hosted.enabled) return managedSettings(defaults, hosted.model)
     const raw = localStorage.getItem(AI_KEY)

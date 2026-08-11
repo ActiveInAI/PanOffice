@@ -11,6 +11,13 @@ import {
   OFFICE_ROUTES as OPEN_ROUTES,
   openOfficeFile,
 } from './open-office-file'
+import {
+  loadRecents,
+  persistRecents,
+  pushRecent,
+  removeRecent,
+  type RecentEntry,
+} from './recent-files'
 import { resolveFilesBase } from './server-files'
 
 /**
@@ -51,41 +58,6 @@ interface ServerFile {
   size: number
   mtimeMs: number
   contentUrl?: string
-}
-
-interface RecentEntry {
-  key: string
-  name: string
-  ext: string
-  ts: number
-  contentUrl?: string
-}
-
-const RECENTS_KEY = 'panoffice.recents'
-
-function loadRecents(): RecentEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]') as RecentEntry[]
-  } catch {
-    return []
-  }
-}
-
-function persistRecents(entries: RecentEntry[]): void {
-  // Authorized WOPI URLs are refreshed from /files.json and never persisted.
-  localStorage.setItem(
-    RECENTS_KEY,
-    JSON.stringify(
-      entries.map(({ key, name, ext, ts }) => ({ key, name, ext, ts })),
-    ),
-  )
-}
-
-function pushRecent(entry: Omit<RecentEntry, 'ts'>): RecentEntry[] {
-  const rest = loadRecents().filter((r) => r.key !== entry.key)
-  const list: RecentEntry[] = [{ ...entry, ts: Date.now() }, ...rest].slice(0, 30)
-  persistRecents(list)
-  return list
 }
 
 function filesBase(): string {
@@ -476,7 +448,15 @@ function ServerFiles({
 
 // ---- recents ----
 
-function Recents({ recents, onOpen }: { recents: RecentEntry[]; onOpen: (r: RecentEntry) => void }) {
+function Recents({
+  recents,
+  onOpen,
+  onRemove,
+}: {
+  recents: RecentEntry[]
+  onOpen: (r: RecentEntry) => void
+  onRemove: (r: RecentEntry) => void
+}) {
   const [filter, setFilter] = useState('全部')
   const tabs = ['全部', '文档', '表格', '演示', 'PDF']
   const extOfTab: Record<string, string> = { 文档: 'docx', 表格: 'xlsx', 演示: 'pptx', PDF: 'pdf' }
@@ -517,7 +497,12 @@ function Recents({ recents, onOpen }: { recents: RecentEntry[]; onOpen: (r: Rece
               ? (serverFileHref(r.name, r.contentUrl) ?? '#')
               : `#/${OPEN_ROUTES[r.ext]}?src=${encodeURIComponent(r.key)}`
             return (
-            <li key={r.key}>
+            <li
+              key={r.key}
+              style={{ display: 'flex', alignItems: 'center', borderRadius: 8 }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f6f7f9')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
               <a
                 href={href}
                 onClick={(event) => {
@@ -527,6 +512,8 @@ function Recents({ recents, onOpen }: { recents: RecentEntry[]; onOpen: (r: Rece
                 }}
                 style={{
                   display: 'flex',
+                  flex: 1,
+                  minWidth: 0,
                   alignItems: 'center',
                   gap: 12,
                   padding: '7px 8px',
@@ -534,15 +521,49 @@ function Recents({ recents, onOpen }: { recents: RecentEntry[]; onOpen: (r: Rece
                   textDecoration: 'none',
                   color: '#1f2329',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f6f7f9')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <TypeTile ext={r.ext} size={30} />
-                <span style={{ fontSize: 14 }}>{r.name}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9aa0ab' }}>
-                  {formatDate(r.ts)}
+                <span style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.name}
                 </span>
               </a>
+              <button
+                type="button"
+                aria-label={`从最近使用中移除 ${r.name}`}
+                title="从最近使用中移除"
+                data-testid="recent-remove"
+                onClick={() => onRemove(r)}
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  border: 0,
+                  borderRadius: 6,
+                  background: 'transparent',
+                  color: '#8a909c',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#feeceb'
+                  e.currentTarget.style.color = '#c42b1c'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#8a909c'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M4 7h16" />
+                  <path d="M9 7V4h6v3" />
+                  <path d="m6 7 1 13h10l1-13" />
+                  <path d="M10 11v5M14 11v5" />
+                </svg>
+              </button>
+              <span style={{ width: 128, paddingRight: 8, textAlign: 'right', fontSize: 12, color: '#9aa0ab' }}>
+                {formatDate(r.ts)}
+              </span>
             </li>
             )
           })}
@@ -647,6 +668,13 @@ function Home() {
   }
 
   const remember = (e: Omit<RecentEntry, 'ts'>): void => setRecents(pushRecent(e))
+  const forget = (entry: RecentEntry): void => {
+    setRecents((current) => {
+      const next = removeRecent(current, entry.key)
+      persistRecents(next)
+      return next
+    })
+  }
 
   const syncServerSources = (files: ServerFile[]): void => {
     const urls = new Map(files.map((file) => [file.name, file.contentUrl]))
@@ -745,7 +773,7 @@ function Home() {
         </div>
 
         <div ref={recentRef} style={{ scrollMarginTop: 20 }}>
-          <Recents recents={recents} onOpen={remember} />
+          <Recents recents={recents} onOpen={remember} onRemove={forget} />
         </div>
       </main>
 

@@ -53,6 +53,14 @@ describe('EFlow PanOffice AI bridge', () => {
     const socket = new FakeSocket()
     const deps: EflowTransportDeps = {
       csrfToken: () => 'csrf-test',
+      selectedModel: async () => ({
+        id: 'provider:deepseek-id:deepseek-v4-flash',
+        family: 'deepseek',
+        label: 'DeepSeek · deepseek-v4-flash',
+        model: 'deepseek-v4-flash',
+        agent: 'codex',
+        providerId: 'deepseek-id',
+      }),
       openSocket: () => {
         queueMicrotask(() => socket.onopen?.(new Event('open')))
         return socket
@@ -91,7 +99,14 @@ describe('EFlow PanOffice AI bridge', () => {
     const create = calls.find((call) => call.path === '/api/conversations')
     expect(create?.body).toMatchObject({
       type: 'acp',
-      extra: { backend: 'claude', agent_name: 'claude', session_mode: 'skipAll' },
+      extra: {
+        backend: 'codex',
+        agent_name: 'codex',
+        session_mode: 'skipAll',
+        current_model_id: 'deepseek-v4-flash',
+        provider_id: 'deepseek-id',
+        provider_model_id: 'deepseek-v4-flash',
+      },
     })
     expect(create?.body).not.toHaveProperty('model')
     expect(calls.some((call) => call.init.method === 'DELETE')).toBe(true)
