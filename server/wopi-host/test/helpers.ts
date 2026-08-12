@@ -38,6 +38,9 @@ export function testConfig(overrides: Partial<WopiHostConfig> = {}): WopiHostCon
     panAiBridgeUrl: null,
     panAiBridgeToken: null,
     panAiModel: 'gpt-5.6-sol',
+    panAiModels: ['gpt-5.6-sol'],
+    panAiDeepseekUrl: null,
+    panAiDeepseekToken: null,
     ...overrides,
   }
 }

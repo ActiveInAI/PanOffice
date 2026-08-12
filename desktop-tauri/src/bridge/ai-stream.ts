@@ -31,6 +31,12 @@ const DEFAULT_MAX_TOKENS = 8192
 
 const errMsg = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
+/** The user's dropdown pick, if the server's allowlist serves it. */
+async function selectedServerModel(models: readonly string[]): Promise<string | undefined> {
+  const selected = (await resolveBrowserPanAiModel(false)).model
+  return models.includes(selected) ? selected : undefined
+}
+
 function managedSettings(defaults: AiSettings, model: string): AiSettings {
   return {
     ...defaults,
@@ -72,7 +78,9 @@ export function createAiBridge(): AiBridge {
       return managedSettings(defaults, selected.model)
     }
     const hosted = await getServerPanAiConfig()
-    if (hosted.enabled) return managedSettings(defaults, hosted.model)
+    if (hosted.enabled) {
+      return managedSettings(defaults, (await selectedServerModel(hosted.models)) ?? hosted.model)
+    }
     const raw = localStorage.getItem(AI_KEY)
     if (!raw) return defaults
     try {
@@ -108,6 +116,8 @@ export function createAiBridge(): AiBridge {
         const result = await runServerPanAiTurn(
           { system: request.system, messages: [{ role: 'user', text: request.user }], tools: [] },
           controller.signal,
+          undefined,
+          await selectedServerModel(hosted.models),
         )
         return { ok: true, content: result.text }
       } catch (err) {
@@ -163,7 +173,12 @@ export function createAiBridge(): AiBridge {
       }
       const hosted = await getServerPanAiConfig()
       if (hosted.enabled) {
-        const result = await runServerPanAiTurn(request, controller.signal)
+        const result = await runServerPanAiTurn(
+          request,
+          controller.signal,
+          undefined,
+          await selectedServerModel(hosted.models),
+        )
         if (result.toolCalls.length > 0) {
           for (const toolCall of result.toolCalls) send({ requestId, type: 'tool-call', toolCall })
         } else if (result.text) {

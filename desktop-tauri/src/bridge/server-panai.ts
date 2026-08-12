@@ -5,6 +5,8 @@ import { buildEflowPrompt, parseEflowToolCalls } from './eflow-ai'
 export interface ServerPanAiConfig {
   enabled: boolean
   model: string
+  /** Server-side allowlist a turn may pick from (always contains `model`). */
+  models: string[]
 }
 
 export interface ServerPanAiTurnResult {
@@ -16,7 +18,7 @@ export interface ServerPanAiDeps {
   fetch: typeof fetch
 }
 
-const disabledConfig: ServerPanAiConfig = { enabled: false, model: '' }
+const disabledConfig: ServerPanAiConfig = { enabled: false, model: '', models: [] }
 let browserConfigPromise: Promise<ServerPanAiConfig> | null = null
 
 function browserDeps(): ServerPanAiDeps {
@@ -36,7 +38,10 @@ async function loadConfig(deps: ServerPanAiDeps): Promise<ServerPanAiConfig> {
     if (payload.enabled !== true || typeof payload.model !== 'string' || !payload.model) {
       return disabledConfig
     }
-    return { enabled: true, model: payload.model }
+    const models = Array.isArray(payload.models)
+      ? payload.models.filter((model): model is string => typeof model === 'string' && !!model)
+      : []
+    return { enabled: true, model: payload.model, models: models.length > 0 ? models : [payload.model] }
   } catch {
     return disabledConfig
   }
@@ -49,11 +54,13 @@ export function getServerPanAiConfig(deps?: ServerPanAiDeps): Promise<ServerPanA
   return browserConfigPromise
 }
 
-/** Run one tool-capable Office turn through the server-owned CLI bridge. */
+/** Run one tool-capable Office turn through the server-owned PanAI route.
+ * `model` must come from the config's allowlist; omitted → server default. */
 export async function runServerPanAiTurn(
   request: Pick<AiStreamRequest, 'system' | 'messages' | 'tools'>,
   signal: AbortSignal,
   deps: ServerPanAiDeps = browserDeps(),
+  model?: string,
 ): Promise<ServerPanAiTurnResult> {
   const tools = request.tools ?? []
   const prompt = buildEflowPrompt(request.system, request.messages, tools)
@@ -61,7 +68,7 @@ export async function runServerPanAiTurn(
     method: 'POST',
     credentials: 'same-origin',
     headers: { accept: 'application/json', 'content-type': 'application/json' },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(model ? { prompt, model } : { prompt }),
     signal,
   })
   let payload: { ok?: boolean; text?: unknown; error?: unknown } = {}

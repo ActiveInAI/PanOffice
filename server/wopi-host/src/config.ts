@@ -63,8 +63,14 @@ export interface WopiHostConfig {
   panAiBridgeUrl: string | null
   /** Server-only bearer token loaded from a systemd credential file. */
   panAiBridgeToken: string | null
-  /** Model id forced by the server for every PanAI turn. */
+  /** Default model for PanAI turns that name none. */
   panAiModel: string
+  /** Models a turn may request; each routes to the upstream serving it. */
+  panAiModels: string[]
+  /** OpenAI-compatible upstream serving the deepseek-* models. */
+  panAiDeepseekUrl: string | null
+  /** Server-only DeepSeek bearer token loaded from a credential file. */
+  panAiDeepseekToken: string | null
 }
 
 function isPermissionLevel(v: unknown): v is PermissionLevel {
@@ -146,6 +152,34 @@ function parsePanAiModel(value: string | undefined): string {
   return model
 }
 
+/** PANAI_MODELS csv → validated allowlist; the default model is always in it. */
+function parsePanAiModels(value: string | undefined, defaultModel: string): string[] {
+  const models = (value ?? '')
+    .split(',')
+    .map((model) => model.trim())
+    .filter((model) => model.length > 0)
+  for (const model of models) {
+    if (!/^[A-Za-z0-9._:/-]{1,128}$/.test(model)) throw new Error('PANAI_MODELS is invalid')
+  }
+  return [...new Set([...(models.length > 0 ? models : []), defaultModel])]
+}
+
+/** Absolute http(s) upstream (DeepSeek and friends live off-host). */
+function parseAbsoluteHttpUrl(value: string | undefined, name: string): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new Error(`${name} is not a valid URL`)
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`${name} must be http(s)`)
+  }
+  return raw.replace(/\/+$/, '')
+}
+
 export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHostConfig {
   const port = Number(env.PORT ?? 3000)
   return {
@@ -172,5 +206,8 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHos
     panAiBridgeUrl: parseLoopbackHttpUrl(env.PANAI_BRIDGE_URL, 'PANAI_BRIDGE_URL'),
     panAiBridgeToken: readTokenFile(env.PANAI_BRIDGE_TOKEN_FILE, 'PANAI_BRIDGE_TOKEN_FILE'),
     panAiModel: parsePanAiModel(env.PANAI_MODEL),
+    panAiModels: parsePanAiModels(env.PANAI_MODELS, parsePanAiModel(env.PANAI_MODEL)),
+    panAiDeepseekUrl: parseAbsoluteHttpUrl(env.PANAI_DEEPSEEK_URL, 'PANAI_DEEPSEEK_URL'),
+    panAiDeepseekToken: readTokenFile(env.PANAI_DEEPSEEK_TOKEN_FILE, 'PANAI_DEEPSEEK_TOKEN_FILE'),
   }
 }

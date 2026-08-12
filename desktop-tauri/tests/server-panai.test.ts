@@ -11,7 +11,11 @@ describe('server-managed PanAI client bridge', () => {
     const deps: ServerPanAiDeps = {
       fetch: (async () => Response.json({ enabled: true, model: 'gpt-5.6-sol' })) as typeof fetch,
     }
-    expect(await getServerPanAiConfig(deps)).toEqual({ enabled: true, model: 'gpt-5.6-sol' })
+    expect(await getServerPanAiConfig(deps)).toEqual({
+      enabled: true,
+      model: 'gpt-5.6-sol',
+      models: ['gpt-5.6-sol'],
+    })
   })
 
   it('sends the tool-capable Office prompt and converts allowlisted tool calls', async () => {

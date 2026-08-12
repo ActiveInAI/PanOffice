@@ -170,9 +170,13 @@ export async function loadPanAiModelCatalog(deps: PanAiModelCatalogDeps): Promis
     }
     const payload = await response.json()
     if (!deps.hosted) {
-      const config = payload as { enabled?: unknown; model?: unknown }
+      const config = payload as { enabled?: unknown; model?: unknown; models?: unknown }
       const model = text(config.model)
-      return config.enabled === true && model ? [standaloneOption(model)] : [...AGENT_MODELS]
+      if (config.enabled !== true || !model) return [...AGENT_MODELS]
+      const models = Array.isArray(config.models)
+        ? config.models.map(text).filter((entry) => entry.length > 0)
+        : []
+      return dedupe((models.length > 0 ? models : [model]).map(standaloneOption))
     }
     return dedupe([...AGENT_MODELS, ...optionsFromProviders(payload)])
   } catch {

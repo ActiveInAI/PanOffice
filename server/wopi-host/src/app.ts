@@ -197,14 +197,36 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
     next()
   }
 
-  // PanAI runs through a same-origin, server-managed bridge. The browser never
-  // receives the loopback URL or bearer credential; the server also forces the
-  // configured model so a document prompt cannot select an arbitrary backend.
-  const panAiEnabled = Boolean(cfg.panAiBridgeUrl && cfg.panAiBridgeToken)
+  // PanAI runs through same-origin, server-managed upstreams. The browser
+  // never receives an upstream URL or bearer credential; a turn may pick a
+  // model, but only from the server's allowlist, and each model routes to
+  // the upstream that actually serves it (deepseek-* → the DeepSeek API,
+  // everything else → the loopback CLI bridge).
+  function panAiUpstreamFor(model: string): { url: string; token: string } | null {
+    if (model.startsWith('deepseek')) {
+      return cfg.panAiDeepseekUrl && cfg.panAiDeepseekToken
+        ? { url: cfg.panAiDeepseekUrl, token: cfg.panAiDeepseekToken }
+        : null
+    }
+    return cfg.panAiBridgeUrl && cfg.panAiBridgeToken
+      ? { url: cfg.panAiBridgeUrl, token: cfg.panAiBridgeToken }
+      : null
+  }
+
+  /** Models whose upstream is actually configured on this deployment. */
+  const panAiModels = cfg.panAiModels.filter((model) => panAiUpstreamFor(model) !== null)
+  const panAiDefaultModel = panAiModels.includes(cfg.panAiModel)
+    ? cfg.panAiModel
+    : (panAiModels[0] ?? '')
+  const panAiEnabled = panAiModels.length > 0
 
   app.get('/panai/config', (_req, res) => {
     res.set('Cache-Control', 'no-store')
-    res.json({ enabled: panAiEnabled, model: panAiEnabled ? cfg.panAiModel : '' })
+    res.json({
+      enabled: panAiEnabled,
+      model: panAiEnabled ? panAiDefaultModel : '',
+      models: panAiEnabled ? panAiModels : [],
+    })
   })
 
   app.post(
@@ -216,25 +238,32 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
         res.status(503).json({ ok: false, error: 'PanAI service is not configured.' })
         return
       }
-      const prompt = (req.body as { prompt?: unknown } | undefined)?.prompt
+      const body = (req.body ?? {}) as { prompt?: unknown; model?: unknown }
+      const prompt = body.prompt
       if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 512_000) {
         res.status(400).json({ ok: false, error: 'Invalid PanAI prompt.' })
         return
       }
+      const model = body.model === undefined ? panAiDefaultModel : body.model
+      if (typeof model !== 'string' || !panAiModels.includes(model)) {
+        res.status(400).json({ ok: false, error: 'Unknown PanAI model.' })
+        return
+      }
+      const upstreamTarget = panAiUpstreamFor(model)!
 
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 180_000)
       const abort = () => controller.abort()
       req.once('aborted', abort)
       try {
-        const upstream = await fetch(`${cfg.panAiBridgeUrl!}/chat/completions`, {
+        const upstream = await fetch(`${upstreamTarget.url}/chat/completions`, {
           method: 'POST',
           headers: {
-            authorization: `Bearer ${cfg.panAiBridgeToken!}`,
+            authorization: `Bearer ${upstreamTarget.token}`,
             'content-type': 'application/json',
           },
           body: JSON.stringify({
-            model: cfg.panAiModel,
+            model,
             stream: false,
             messages: [
               {
@@ -261,7 +290,7 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
           return
         }
         res.set('Cache-Control', 'no-store')
-        res.json({ ok: true, text, model: cfg.panAiModel })
+        res.json({ ok: true, text, model })
       } catch (error) {
         const timedOut = controller.signal.aborted
         res.status(timedOut ? 504 : 502).json({

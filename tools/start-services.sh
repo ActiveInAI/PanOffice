@@ -116,7 +116,10 @@ start_service wopi 3210 "$ROOT/server/wopi-host" "$LOG_DIR/wopi.log" \
     XLSX_RPC_URL=http://127.0.0.1:8791/rpc \
     PANAI_BRIDGE_URL=http://127.0.0.1:8790/v1 \
     PANAI_BRIDGE_TOKEN_FILE="$TOKEN_FILE" \
-    PANAI_MODEL="${PANAI_MODEL:-gpt-5.6-sol}" \
+    PANAI_MODEL="${PANAI_MODEL:-deepseek-v4-flash}" \
+    PANAI_MODELS="${PANAI_MODELS:-deepseek-v4-flash,deepseek-v4-pro,gpt-5.6-sol,claude-sonnet-5-xhigh}" \
+    PANAI_DEEPSEEK_URL="${PANAI_DEEPSEEK_URL:-https://api.deepseek.com/v1}" \
+    PANAI_DEEPSEEK_TOKEN_FILE="${PANAI_DEEPSEEK_TOKEN_FILE:-$RUNTIME_DIR/credentials/deepseek-api-key}" \
     npm run dev
 
 start_service shell "$DEV_PORT" "$ROOT/desktop-tauri" "$LOG_DIR/shell.log" \
