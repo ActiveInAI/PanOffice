@@ -184,6 +184,11 @@ async function hashLogical(logicalPath: string): Promise<string> {
 
 let pendingConsumed = false
 
+/** Prepare the single-use route source before the shell mounts a new Sheets view. */
+export function resetPendingWorkbookSource(): void {
+  pendingConsumed = false
+}
+
 /** Take the workbook path queued for this view (the shell routes `#/sheets?src=…`); null afterwards */
 function consumePendingSrc(): string | null {
   if (pendingConsumed) return null

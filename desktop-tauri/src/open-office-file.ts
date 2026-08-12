@@ -1,4 +1,5 @@
 import { platform } from './bridge/platform'
+import { resetPendingWorkbookSource } from './bridge/sheets-api'
 
 export const OFFICE_FILE_ACCEPT = '.docx,.xlsx,.pptx,.pdf'
 
@@ -69,9 +70,16 @@ export async function openOfficeFile(file: File): Promise<void> {
   await platform.writeFile(key, new Uint8Array(await file.arrayBuffer()))
   rememberLocalFile(key, file, ext)
 
-  // Bridge pending-source guards are module scoped. A real reload resets them,
-  // which makes repeated Word -> Excel -> Word switching deterministic too.
-  window.location.hash = `#/${route}?src=${encodeURIComponent(key)}`
+  const href = `#/${route}?src=${encodeURIComponent(key)}`
+  if (route === 'sheets') {
+    resetPendingWorkbookSource()
+    window.location.hash = href
+    return
+  }
+
+  // The other editors still use module-scoped pending-source guards. A real
+  // reload resets them and keeps repeated cross-format switching deterministic.
+  window.location.hash = href
   window.location.reload()
 }
 

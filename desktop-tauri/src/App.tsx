@@ -5,6 +5,7 @@ import { SheetsApp } from './apps/sheets/SheetsApp'
 import { SlidesApp } from './apps/slides/SlidesApp'
 import { LOGO_SVG } from './branding'
 import { isTauri, platform } from './bridge/platform'
+import { resetPendingWorkbookSource } from './bridge/sheets-api'
 import { makeBlankDocx, makeBlankPdf, makeBlankXlsx } from './blank-docs'
 import {
   OFFICE_FILE_ACCEPT,
@@ -88,6 +89,11 @@ function serverFileHref(name: string, contentUrl?: string): string | null {
 }
 
 function navigateOfficeHref(href: string): void {
+  if (href.startsWith('#/sheets')) {
+    resetPendingWorkbookSource()
+    window.location.hash = href
+    return
+  }
   window.location.hash = href
   // Each editor's pending-source guard is module scoped; reload so repeated
   // cross-format opens always consume the newly selected source.
