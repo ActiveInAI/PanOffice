@@ -1,5 +1,8 @@
 import { platform } from './bridge/platform'
+import { resetPendingDocumentSource } from './bridge/desktop-api'
+import { resetPendingPdfSource } from './bridge/pdf-api'
 import { resetPendingWorkbookSource } from './bridge/sheets-api'
+import { resetPendingSlidesSource } from './bridge/slides-api'
 
 export const OFFICE_FILE_ACCEPT = '.docx,.xlsx,.pptx,.pdf'
 
@@ -70,17 +73,17 @@ export async function openOfficeFile(file: File): Promise<void> {
   await platform.writeFile(key, new Uint8Array(await file.arrayBuffer()))
   rememberLocalFile(key, file, ext)
 
-  const href = `#/${route}?src=${encodeURIComponent(key)}`
-  if (route === 'sheets') {
-    resetPendingWorkbookSource()
-    window.location.hash = href
-    return
+  let href = `#/${route}?src=${encodeURIComponent(key)}`
+  // Each renderer consumes a source only once. Reset its guard before routing
+  // so File > Open can switch formats without a costly full page reload.
+  if (route === 'docs') resetPendingDocumentSource()
+  else if (route === 'sheets') resetPendingWorkbookSource()
+  else if (route === 'slides') resetPendingSlidesSource()
+  else resetPendingPdfSource()
+  if (window.location.hash === href) {
+    href = `${href}&open=${Date.now().toString(36)}`
   }
-
-  // The other editors still use module-scoped pending-source guards. A real
-  // reload resets them and keeps repeated cross-format switching deterministic.
   window.location.hash = href
-  window.location.reload()
 }
 
 export async function pickAndOpenOfficeFile(): Promise<boolean> {

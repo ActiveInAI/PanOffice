@@ -33,6 +33,7 @@ export interface PanAiModelCatalogDeps {
 export const PANAI_MODEL_KEY = 'panoffice.panai.model'
 export const PANAI_MODEL_CHANGE_EVENT = 'panoffice-panai-model-change'
 export const KIMI_CODING_BASE_URL = 'https://api.kimi.com/coding/v1'
+export const DEFAULT_PANAI_MODEL = 'deepseek-v4-flash'
 
 const AGENT_MODELS: readonly PanAiModelOption[] = [
   {
@@ -129,13 +130,32 @@ function dedupe(options: readonly PanAiModelOption[]): PanAiModelOption[] {
 }
 
 function standaloneOption(model: string): PanAiModelOption {
-  const claude = model.toLowerCase().includes('claude')
+  const lower = model.toLowerCase()
+  const family: PanAiModelFamily = lower.includes('deepseek')
+    ? 'deepseek'
+    : lower.includes('kimi') || lower.includes('moonshot')
+      ? 'kimi'
+      : lower.includes('agnes')
+        ? 'agnes'
+        : lower.includes('claude')
+          ? 'claude'
+          : 'gpt'
+  const label =
+    family === 'gpt'
+      ? 'GPT'
+      : family === 'claude'
+        ? 'Claude'
+        : family === 'deepseek'
+          ? 'DeepSeek'
+          : family === 'kimi'
+            ? 'Kimi'
+            : 'Agnes'
   return {
-    id: `agent:${claude ? 'claude' : 'codex'}:${model}`,
-    family: claude ? 'claude' : 'gpt',
-    label: `${claude ? 'Claude' : 'GPT'} · ${model}`,
+    id: `agent:${familyAgent[family]}:${model}`,
+    family,
+    label: `${label} · ${model}`,
     model,
-    agent: claude ? 'claude' : 'codex',
+    agent: familyAgent[family],
   }
 }
 
@@ -170,7 +190,17 @@ function storage(): Storage | null {
 
 export function selectedPanAiModel(options: readonly PanAiModelOption[]): PanAiModelOption {
   const selected = storage()?.getItem(PANAI_MODEL_KEY) ?? ''
-  return options.find((option) => option.id === selected) ?? options[0] ?? AGENT_MODELS[0]
+  const selectedOption = options.find((option) => option.id === selected)
+  // Older installs had GPT 5.6 Sol as their implicit first option. Migrate
+  // that legacy default only; a deliberate choice of any other model remains
+  // untouched. New installs prefer DeepSeek-V4-Flash whenever it is enabled.
+  if (selectedOption && selectedOption.model !== 'gpt-5.6-sol') return selectedOption
+  return (
+    options.find((option) => option.model.toLowerCase() === DEFAULT_PANAI_MODEL) ??
+    selectedOption ??
+    options[0] ??
+    AGENT_MODELS[0]
+  )
 }
 
 export function setSelectedPanAiModel(id: string): void {

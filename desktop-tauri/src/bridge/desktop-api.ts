@@ -195,6 +195,11 @@ async function loadDocx(path: string): Promise<OpenFileResult | null> {
 
 let pendingConsumed = false
 
+/** Prepare the single-use route source before the shell mounts a new Docs view. */
+export function resetPendingDocumentSource(): void {
+  pendingConsumed = false
+}
+
 /** Take the docx path queued for this view (the shell routes `#/docs?src=…`); null afterwards */
 function consumePendingOpenDocx(): Promise<OpenFileResult | null> {
   if (pendingConsumed) return Promise.resolve(null)

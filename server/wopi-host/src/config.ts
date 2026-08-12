@@ -141,7 +141,7 @@ function readTokenFile(path: string | undefined, envName: string): string | null
 }
 
 function parsePanAiModel(value: string | undefined): string {
-  const model = value?.trim() || 'gpt-5.6-sol'
+  const model = value?.trim() || 'deepseek-v4-flash'
   if (!/^[A-Za-z0-9._:/-]{1,128}$/.test(model)) throw new Error('PANAI_MODEL is invalid')
   return model
 }

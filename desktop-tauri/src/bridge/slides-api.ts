@@ -44,6 +44,11 @@ const STYLE_TEMPLATES_KEY = 'panoffice.slides.styleTemplates'
 /** #/slides?src=… is consumed once per page load (same contract as the docs port) */
 let pendingConsumed = false
 
+/** Prepare the single-use route source before the shell mounts a new Slides view. */
+export function resetPendingSlidesSource(): void {
+  pendingConsumed = false
+}
+
 type SlidesLang = 'zh' | 'en' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'th' | 'id' | 'ru' | 'ar'
 
 function getLanguage(): Promise<SlidesLang> {

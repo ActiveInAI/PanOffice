@@ -4,8 +4,11 @@ import { PdfApp } from './apps/pdf/PdfApp'
 import { SheetsApp } from './apps/sheets/SheetsApp'
 import { SlidesApp } from './apps/slides/SlidesApp'
 import { LOGO_SVG } from './branding'
+import { resetPendingDocumentSource } from './bridge/desktop-api'
+import { resetPendingPdfSource } from './bridge/pdf-api'
 import { isTauri, platform } from './bridge/platform'
 import { resetPendingWorkbookSource } from './bridge/sheets-api'
+import { resetPendingSlidesSource } from './bridge/slides-api'
 import { makeBlankDocx, makeBlankPdf, makeBlankXlsx } from './blank-docs'
 import {
   OFFICE_FILE_ACCEPT,
@@ -89,15 +92,19 @@ function serverFileHref(name: string, contentUrl?: string): string | null {
 }
 
 function navigateOfficeHref(href: string): void {
-  if (href.startsWith('#/sheets')) {
-    resetPendingWorkbookSource()
-    window.location.hash = href
-    return
+  // Every editor consumes its route source exactly once. Reset the matching
+  // guard before changing the hash so reopening a format stays in the SPA
+  // instead of reloading the entire ~large Office shell and its toolbars.
+  if (href.startsWith('#/docs')) resetPendingDocumentSource()
+  else if (href.startsWith('#/sheets')) resetPendingWorkbookSource()
+  else if (href.startsWith('#/slides')) resetPendingSlidesSource()
+  else if (href.startsWith('#/pdf')) resetPendingPdfSource()
+  // Setting an unchanged hash emits no hashchange event. Give a repeated open
+  // of the same logical path its own route instance so the new bytes are read.
+  if (window.location.hash === href) {
+    href = `${href}${href.includes('?') ? '&' : '?'}open=${Date.now().toString(36)}`
   }
   window.location.hash = href
-  // Each editor's pending-source guard is module scoped; reload so repeated
-  // cross-format opens always consume the newly selected source.
-  window.location.reload()
 }
 
 function formatSize(bytes: number): string {
@@ -288,9 +295,9 @@ function NewDocCards({ onOpenLocal }: { onOpenLocal: () => void }) {
       const bytes = await c.make()
       const key = `local/未命名.${c.ext}`
       await platform.writeFile(key, bytes)
-      // Reload after changing formats so the bridge's one-shot pending-source
-      // guard is reset. Without this, returning from an earlier PDF session
-      // and creating another PDF leaves the editor with no consumed source.
+      // Route directly into the matching editor. The shell resets its
+      // one-shot source guard before changing the hash, so this does not tear
+      // down and reload the whole Office application.
       navigateOfficeHref(`#/${OPEN_ROUTES[c.ext]}?src=${encodeURIComponent(key)}`)
     } finally {
       setBusy(null)
@@ -890,9 +897,11 @@ function Home() {
 export function App() {
   const hash = useHashRoute()
   const route = hash.split('?')[0] ?? ''
-  if (route === '#/pdf') return <PdfApp />
-  if (route === '#/docs') return <DocsApp />
-  if (route === '#/sheets') return <SheetsApp />
-  if (route === '#/slides') return <SlidesApp />
+  // Key on the full source route: opening a second file of the same type must
+  // mount a fresh editor that consumes its newly queued source.
+  if (route === '#/pdf') return <PdfApp key={hash} />
+  if (route === '#/docs') return <DocsApp key={hash} />
+  if (route === '#/sheets') return <SheetsApp key={hash} />
+  if (route === '#/slides') return <SlidesApp key={hash} />
   return <Home />
 }

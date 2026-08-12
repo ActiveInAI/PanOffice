@@ -40,6 +40,11 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
 
 let pendingConsumed = false
 
+/** Prepare the single-use route source before the shell mounts a new PDF view. */
+export function resetPendingPdfSource(): void {
+  pendingConsumed = false
+}
+
 /** Take the pdf path queued for this view (the shell routes `#/pdf?src=…`); null afterwards */
 function consumePending(): Promise<string | null> {
   if (pendingConsumed) return Promise.resolve(null)

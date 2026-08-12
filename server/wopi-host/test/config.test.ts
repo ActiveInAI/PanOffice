@@ -46,7 +46,7 @@ describe('config parsing', () => {
     expect(cfg.xlsxRpcUrl).toBeNull()
     expect(cfg.panAiBridgeUrl).toBeNull()
     expect(cfg.panAiBridgeToken).toBeNull()
-    expect(cfg.panAiModel).toBe('gpt-5.6-sol')
+    expect(cfg.panAiModel).toBe('deepseek-v4-flash')
     expect(cfg.proofRequired).toBe(false)
     expect(cfg.lockTtlMs).toBe(30 * 60 * 1000)
     expect(cfg.versionCap).toBe(10)

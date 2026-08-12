@@ -60,6 +60,11 @@ interface PageSize {
   height: number
 }
 
+interface PageMetrics {
+  sizes: PageSize[]
+  rotations: number[]
+}
+
 type FitMode = 'width' | 'page' | null
 
 const DOC_OPTS = {
@@ -67,6 +72,29 @@ const DOC_OPTS = {
   cMapPacked: true,
   standardFontDataUrl: `${ASSET_BASE}standard_fonts/`,
   wasmUrl: `${ASSET_BASE}wasm/`,
+}
+
+/**
+ * Read page geometry with bounded concurrency. A 300+ page PDF used to await
+ * every page serially before showing any editor UI, making the opening state
+ * feel stalled even though PDF.js had already parsed the document.
+ */
+async function loadPageMetrics(doc: PDFDocumentProxy, workers = 8): Promise<PageMetrics> {
+  const sizes = new Array<PageSize>(doc.numPages)
+  const rotations = new Array<number>(doc.numPages)
+  let next = 0
+  const work = async () => {
+    while (true) {
+      const index = next++
+      if (index >= doc.numPages) return
+      const page = await doc.getPage(index + 1)
+      const viewport = page.getViewport({ scale: 1, rotation: 0 })
+      sizes[index] = { width: viewport.width, height: viewport.height }
+      rotations[index] = page.rotate ?? 0
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(workers, doc.numPages) }, work))
+  return { sizes, rotations }
 }
 
 /** Which items in the container are within the (expanded) viewport — shared lazy-render basis
@@ -718,6 +746,8 @@ export default function App() {
     null,
   )
   const searchJumpRef = useRef<{ matches: SearchMatch[]; cur: number } | null>(null)
+  /** Prevent a slow, superseded metadata scan from overwriting the current PDF. */
+  const activeMetricsDocRef = useRef<PDFDocumentProxy | null>(null)
 
   /** Visible pages (with unsaved reorder, deleted pages hidden): position → original page index */
   const visList = useMemo(() => {
@@ -783,17 +813,16 @@ export default function App() {
       password: passwordRef.current,
       ...DOC_OPTS,
     }).promise
-    const all: PageSize[] = []
-    const rots: number[] = []
-    for (let i = 1; i <= loaded.numPages; i++) {
-      const page = await loaded.getPage(i)
-      // Unrotated size; display size is derived by geom from the total rotation
-      const vp = page.getViewport({ scale: 1, rotation: 0 })
-      all.push({ width: vp.width, height: vp.height })
-      rots.push(page.rotate ?? 0)
-    }
-    setSizes(all)
-    setBaseRots(rots)
+    // Load the first page synchronously, then make the document interactive.
+    // Its geometry is a safe provisional layout for the other pages while the
+    // bounded background scan fills their exact dimensions and rotations.
+    const first = await loaded.getPage(1)
+    const firstViewport = first.getViewport({ scale: 1, rotation: 0 })
+    const firstSize = { width: firstViewport.width, height: firstViewport.height }
+    const firstRotation = first.rotate ?? 0
+    setSizes(Array.from({ length: loaded.numPages }, () => ({ ...firstSize })))
+    setBaseRots(Array.from({ length: loaded.numPages }, () => firstRotation))
+    activeMetricsDocRef.current = loaded
     setDoc(loaded)
     setMarkups([])
     setDrawings([])
@@ -808,6 +837,17 @@ export default function App() {
     setDeleteToast(false)
     setUndoStack([])
     setRedoStack([])
+    void loadPageMetrics(loaded).then(
+      ({ sizes: exactSizes, rotations: exactRotations }) => {
+        if (activeMetricsDocRef.current !== loaded) return
+        setSizes(exactSizes)
+        setBaseRots(exactRotations)
+      },
+      () => {
+        // The first-page layout remains usable if a damaged later page cannot
+        // provide metadata; opening the document itself still succeeds.
+      },
+    )
     void loaded.getOutline().then(
       (o) => setOutline(o && o.length > 0 ? (o as OutlineNode[]) : null),
       () => setOutline(null),
@@ -1686,12 +1726,116 @@ export default function App() {
     />
   )
 
+  /**
+   * Keep the ribbon structurally stable while bytes are being read and PDF.js
+   * is preparing page metadata. Previously this branch rendered only File,
+   * making the entire toolbar disappear for large files or slow LAN reads.
+   * Controls that depend on a loaded document remain visibly disabled, while
+   * File > Open remains usable so a stalled/corrupt file can be replaced.
+   */
+  const openingRibbon = (
+    <div className="ribbon" data-testid="pdf-opening-ribbon" aria-busy="true">
+      <div className="ribbon-tabs">
+        {fileMenu}
+        <button className="qa-btn" title={`${t('save')} (⌘S)`} aria-label={t('save')} disabled>
+          <IconSave />
+        </button>
+        <button className="qa-btn" title={`${t('undo')} (⌘Z)`} disabled>
+          <IconUndo />
+        </button>
+        <button className="qa-btn" title={`${t('redo')} (⇧⌘Z)`} disabled>
+          <IconRedo />
+        </button>
+        <span className="ribbon-tabs-spacer" />
+        {filePath && (
+          <span className="ribbon-file" title={filePath}>
+            {fileName}
+          </span>
+        )}
+      </div>
+      <div className="ribbon-body" aria-label={t('loading')}>
+        <div className="ribbon-group">
+          <div className="ribbon-group-items">
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconThumbs /></span>
+              {t('thumbs')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconOutline /></span>
+              {t('outline')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconSearch /></span>
+              {t('search')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconSpread /></span>
+              {t('twoPage')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconNight /></span>
+              {t('nightMode')}
+            </button>
+          </div>
+        </div>
+        <div className="ribbon-sep" />
+        <div className="ribbon-group">
+          <div className="ribbon-group-items">
+            <div className="rb-col">
+              <div className="rb-row">
+                <input className="tb-page-input" value="1" aria-label={t('pageOf', { total: 0 })} disabled readOnly />
+                <span className="tb-page-total">{t('pageOf', { total: '—' })}</span>
+              </div>
+              <div className="rb-row">
+                <button className="rb-icon" title={t('zoomOut')} disabled>−</button>
+                <span className="tb-zoom">100%</span>
+                <button className="rb-icon" title={t('zoomIn')} disabled>+</button>
+              </div>
+            </div>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconFitWidth /></span>
+              {t('fitWidth')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconFitPage /></span>
+              {t('fitPage')}
+            </button>
+          </div>
+        </div>
+        <div className="ribbon-sep" />
+        <div className="ribbon-group">
+          <div className="ribbon-group-items">
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconHighlight /></span>
+              {t('highlight')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconUnderline /></span>
+              {t('underline')}
+            </button>
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><IconStrike /></span>
+              {t('strikeout')}
+            </button>
+          </div>
+        </div>
+        <div className="ribbon-sep" />
+        <div className="ribbon-group">
+          <div className="ribbon-group-items">
+            <button className="rb-big" disabled>
+              <span className="rb-big-icon"><PanAiMark size={28} /></span>
+              <span className="notranslate" translate="no">{t('ribbonAiAssistant')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   if (status === 'password') {
     return (
       <div className="app pdf-app">
-        <div className="ribbon">
-          <div className="ribbon-tabs">{fileMenu}</div>
-        </div>
+        {openingRibbon}
         <div className="pdf-placeholder">
           <form
             className="pdf-password"
@@ -1724,9 +1868,7 @@ export default function App() {
   if (status !== 'ready' || !doc) {
     return (
       <div className="app pdf-app">
-        <div className="ribbon">
-          <div className="ribbon-tabs">{fileMenu}</div>
-        </div>
+        {openingRibbon}
         <div className="pdf-placeholder">
           {status === 'loading' ? t('loading') : status === 'error' ? t('loadError') : t('noFile')}
         </div>

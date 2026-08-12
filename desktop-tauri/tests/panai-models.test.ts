@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_PANAI_MODEL,
   KIMI_CODING_BASE_URL,
   loadPanAiModelCatalog,
   optionsFromProviders,
+  selectedPanAiModel,
 } from '../src/bridge/panai-models'
 
 describe('PanAI model catalog', () => {
@@ -60,5 +62,30 @@ describe('PanAI model catalog', () => {
       fetch: (async () => Response.json({ enabled: true, model: 'gpt-5.6-terra' })) as typeof fetch,
     })
     expect(options).toMatchObject([{ family: 'gpt', model: 'gpt-5.6-terra', agent: 'codex' }])
+  })
+
+  it('labels a standalone DeepSeek model with its actual provider family', async () => {
+    const options = await loadPanAiModelCatalog({
+      hosted: false,
+      fetch: (async () => Response.json({ enabled: true, model: DEFAULT_PANAI_MODEL })) as typeof fetch,
+    })
+    expect(options).toMatchObject([{ family: 'deepseek', model: DEFAULT_PANAI_MODEL, agent: 'codex' }])
+  })
+
+  it('prefers DeepSeek-V4-Flash over the legacy implicit GPT default', () => {
+    const options = optionsFromProviders({
+      success: true,
+      data: [
+        {
+          id: 'deepseek-id',
+          platform: 'deepseek',
+          name: 'DeepSeek',
+          base_url: 'https://api.deepseek.com/v1',
+          models: [DEFAULT_PANAI_MODEL],
+          enabled: true,
+        },
+      ],
+    })
+    expect(selectedPanAiModel(options)).toMatchObject({ model: DEFAULT_PANAI_MODEL, family: 'deepseek' })
   })
 })
