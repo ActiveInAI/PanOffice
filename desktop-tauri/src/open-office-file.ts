@@ -4,16 +4,61 @@ import { resetPendingPdfSource } from './bridge/pdf-api'
 import { resetPendingWorkbookSource } from './bridge/sheets-api'
 import { resetPendingSlidesSource } from './bridge/slides-api'
 import { pushRecent, type RecentEntry } from './recent-files'
-import { resolveFilesBase, resolveServerContentUrl } from './server-files'
+import { resolveFilesBase, resolveServerContentUrl, wopiDisplayName } from './server-files'
 
-export const OFFICE_FILE_ACCEPT = '.docx,.xlsx,.pptx,.pdf'
+export type OfficeRoute = 'docs' | 'sheets' | 'slides' | 'pdf' | 'collabora' | 'text' | 'ofd'
 
-export const OFFICE_ROUTES: Readonly<Record<string, 'docs' | 'sheets' | 'slides' | 'pdf'>> = {
+export const OFFICE_FILE_ACCEPT =
+  '.docx,.xlsx,.pptx,.pdf,.odt,.ods,.odp,.doc,.xls,.ppt,.rtf,.txt,.xml,.csv,.ofd'
+
+/**
+ * Extension → editor. The GenOffice engines own the OOXML/PDF mainline;
+ * ODF and the legacy binary formats open in Collabora (full LibreOffice
+ * toolbar, real editing); plain text and XML use the built-in text editor;
+ * OFD is read-only via server-side conversion to PDF.
+ */
+export const OFFICE_ROUTES: Readonly<Record<string, OfficeRoute>> = {
   docx: 'docs',
   xlsx: 'sheets',
   pptx: 'slides',
   pdf: 'pdf',
+  odt: 'collabora',
+  ods: 'collabora',
+  odp: 'collabora',
+  doc: 'collabora',
+  xls: 'collabora',
+  ppt: 'collabora',
+  rtf: 'collabora',
+  csv: 'collabora',
+  txt: 'text',
+  xml: 'text',
+  ofd: 'ofd',
 }
+
+/** Formats whose editor lives on the server (Collabora) — the bytes must
+ * be in the file store before the editor can open them. */
+export const SERVER_EDITED_ROUTES: ReadonlySet<OfficeRoute> = new Set<OfficeRoute>([
+  'collabora',
+  'sheets',
+  'ofd',
+])
+
+/** The "full toolbar" alternative for formats that also have a built-in
+ * editor: same document, Collabora's complete LibreOffice feature set. */
+export const FULL_TOOLBAR_EXTS: ReadonlySet<string> = new Set([
+  'docx',
+  'xlsx',
+  'pptx',
+  'odt',
+  'ods',
+  'odp',
+  'doc',
+  'xls',
+  'ppt',
+  'rtf',
+  'csv',
+  'txt',
+])
 
 function extensionOf(name: string): string {
   return name.split('.').pop()?.toLowerCase() ?? ''
@@ -117,7 +162,7 @@ export async function openOfficeFile(
   let recent: Omit<RecentEntry, 'ts'> = { key: src, name: safeName, ext }
   if (isTauri()) {
     await platform.writeFile(src, bytes)
-  } else if (route === 'sheets') {
+  } else if (SERVER_EDITED_ROUTES.has(route)) {
     const contentUrl = await uploadToServerStore(safeName, bytes, onProgress)
     if (contentUrl !== null) {
       src = contentUrl
@@ -131,17 +176,34 @@ export async function openOfficeFile(
   }
   pushRecent(recent)
 
-  let href = `#/${route}?src=${encodeURIComponent(src)}`
+  let href = officeHref(route, src)
   // Each renderer consumes a source only once. Reset its guard before routing
   // so File > Open can switch formats without a costly full page reload.
   if (route === 'docs') resetPendingDocumentSource()
   else if (route === 'sheets') resetPendingWorkbookSource()
   else if (route === 'slides') resetPendingSlidesSource()
-  else resetPendingPdfSource()
+  else if (route === 'pdf' || route === 'ofd') resetPendingPdfSource()
   if (window.location.hash === href) {
     href = `${href}&open=${Date.now().toString(36)}`
   }
   window.location.hash = href
+}
+
+/**
+ * Hash route for a source. OFD has no native editor: the PDF editor opens
+ * the host's converted twin (`/ofd/<name>/pdf`), which is why the route
+ * carries a rewritten src instead of the original document URL.
+ */
+export function officeHref(route: OfficeRoute, src: string): string {
+  if (route !== 'ofd') return `#/${route}?src=${encodeURIComponent(src)}`
+  const name = wopiDisplayName(src) ?? src.replace(/^local\//, '')
+  let base = ''
+  try {
+    base = new URL(src).origin
+  } catch {
+    base = ''
+  }
+  return `#/pdf?src=${encodeURIComponent(`${base}/ofd/${encodeURIComponent(name)}/pdf`)}`
 }
 
 export async function pickAndOpenOfficeFile(): Promise<boolean> {

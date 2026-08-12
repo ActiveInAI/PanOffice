@@ -4,11 +4,14 @@
  * version archiving, and the dev index/edit pages.
  */
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { canWrite, listDevTokenChoices, TokenResolver } from './auth.js'
+import { proxyCollaboraHttp } from './collabora-proxy.js'
 import type { WopiHostConfig, WopiUser } from './config.js'
 import { LockManager } from './locks.js'
 import { ProofKeyProvider, validateProof } from './proof.js'
@@ -419,6 +422,59 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
     )
   }
 
+  // Collabora rides this host's own origin: /browser (static UI) and /cool
+  // (document sessions incl. WebSocket, tunneled by the entrypoint's upgrade
+  // handler). coolwsd itself stays on loopback.
+  if (cfg.collaboraSameOrigin) {
+    const collaboraPipe = (req: Request, res: Response): void =>
+      proxyCollaboraHttp(cfg.collaboraInternalUrl, req, res)
+    app.use('/browser', collaboraPipe)
+    app.use('/cool', collaboraPipe)
+  }
+
+  // OFD documents are readable through server-side conversion: the cached
+  // PDF twin renders in the PanOffice PDF editor (viewing/annotation). No
+  // honest write-back to OFD exists, so none is offered.
+  if (cfg.ofdConvertPython) {
+    const ofdScript = fileURLToPath(new URL('../tools/ofd2pdf.py', import.meta.url))
+    app.use('/ofd', shellCors, wopiAuth)
+    app.get('/ofd/:id/pdf', requireFile, async (req: Request, res: Response) => {
+      const id = req.params.id
+      if (!/\.ofd$/i.test(id)) {
+        res.status(415).json({ error: 'not an OFD file' })
+        return
+      }
+      const source = res.locals.filePath as string
+      const cacheDir = join(dataDir, '.ofd-cache')
+      const cached = join(cacheDir, `${id}.pdf`)
+      try {
+        const fresh = existsSync(cached) && statSync(cached).mtimeMs >= statSync(source).mtimeMs
+        if (!fresh) {
+          await mkdir(cacheDir, { recursive: true })
+          const tmp = `${cached}.tmp-${process.pid}`
+          await new Promise<void>((done, fail) => {
+            execFile(
+              cfg.ofdConvertPython!,
+              [ofdScript, source, tmp],
+              { timeout: 120_000 },
+              (error, _stdout, stderr) => {
+                if (error) fail(new Error(String(stderr).slice(0, 400) || error.message))
+                else done()
+              },
+            )
+          })
+          await rename(tmp, cached)
+        }
+        res.set('Content-Type', 'application/pdf')
+        res.set('Cache-Control', 'no-store')
+        createReadStream(cached).pipe(res)
+      } catch (error) {
+        console.warn(`[ofd] convert failed for ${id}: ${(error as Error).message}`)
+        res.status(502).json({ error: 'OFD conversion failed' })
+      }
+    })
+  }
+
   // PanOffice Web 壳（GenOffice 编辑器）挂载在根路径；API 路由不受影响。
   if (cfg.shellDir) {
     app.use(
@@ -819,27 +875,36 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
       return
     }
     // urlsrc points at coolwsd as this host sees it; rewrite the origin to
-    // the browser-visible one.
+    // the browser-visible one. Same-origin mode keeps the path relative so
+    // the /browser + /cool proxy carries the editor through any chain the
+    // shell itself rides (tunnel, public-domain proxy).
     const u = new URL(urlsrc)
-    const base = `${cfg.collaboraPublicUrl}${u.pathname}${u.search}`.replace(/\?+$/, '')
+    const origin = cfg.collaboraSameOrigin ? '' : cfg.collaboraPublicUrl
+    const base = `${origin}${u.pathname}${u.search}`.replace(/\?+$/, '')
     const wopiSrc = encodeURIComponent(`${cfg.wopiPublicBase}/wopi/files/${encodeURIComponent(id)}`)
     const frameSrc = `${base}?WOPISrc=${wopiSrc}&access_token=${encodeURIComponent(token)}`
+    // The shell embeds this page in its own chrome; embed=1 drops the topbar.
+    const embedded = req.query.embed === '1'
     res.type('html').send(`<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(id)} — PanOffice</title>
 <style>
 html,body{margin:0;height:100%}
-iframe{border:0;width:100%;height:calc(100% - 38px)}
+iframe{border:0;width:100%;height:${embedded ? '100%' : 'calc(100% - 38px)'}}
 .po-topbar{display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;box-sizing:border-box;border-bottom:1px solid #e5e7eb;background:#f9fafb;font:13px system-ui,sans-serif}
 .po-topbar a{color:#2563eb;text-decoration:none}
 .po-topbar a:hover{text-decoration:underline}
 .po-topbar .name{color:#374151}
 </style></head>
 <body>
-<div class="po-topbar">
+${
+  embedded
+    ? ''
+    : `<div class="po-topbar">
   <svg width="20" height="20" viewBox="0 0 96 96" aria-hidden="true"><polygon points="48 8 55.65 29.52 76.28 19.72 66.48 40.35 88 48 66.48 55.65 76.28 76.28 55.65 66.48 48 88 40.35 66.48 19.72 76.28 29.52 55.65 8 48 29.52 40.35 19.72 19.72 40.35 29.52" fill="#f4c542"/><circle cx="48" cy="48" r="20" fill="#fff1bf"/></svg>
   <a href="/">&larr; 文件列表 / 上传</a>
   <span class="name">${escapeHtml(id)}</span>
-</div>
+</div>`
+}
 <iframe src="${escapeHtml(frameSrc)}" allowfullscreen></iframe></body></html>`)
   })
 

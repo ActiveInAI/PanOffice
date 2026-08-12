@@ -71,6 +71,10 @@ export interface WopiHostConfig {
   panAiDeepseekUrl: string | null
   /** Server-only DeepSeek bearer token loaded from a credential file. */
   panAiDeepseekToken: string | null
+  /** Serve Collabora through this host's own origin (/browser + /cool proxy). */
+  collaboraSameOrigin: boolean
+  /** Python interpreter with easyofd, for the /ofd/<id>/pdf read path. */
+  ofdConvertPython: string | null
 }
 
 function isPermissionLevel(v: unknown): v is PermissionLevel {
@@ -209,5 +213,7 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WopiHos
     panAiModels: parsePanAiModels(env.PANAI_MODELS, parsePanAiModel(env.PANAI_MODEL)),
     panAiDeepseekUrl: parseAbsoluteHttpUrl(env.PANAI_DEEPSEEK_URL, 'PANAI_DEEPSEEK_URL'),
     panAiDeepseekToken: readTokenFile(env.PANAI_DEEPSEEK_TOKEN_FILE, 'PANAI_DEEPSEEK_TOKEN_FILE'),
+    collaboraSameOrigin: envBool(env.COLLABORA_SAME_ORIGIN, false),
+    ofdConvertPython: env.OFD_CONVERT_PYTHON?.trim() ? env.OFD_CONVERT_PYTHON.trim() : null,
   }
 }

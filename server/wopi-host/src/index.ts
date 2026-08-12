@@ -11,6 +11,7 @@
 import { resolve } from 'node:path'
 import { createApp, ensureDataDir } from './app.js'
 import { listDevTokenChoices } from './auth.js'
+import { isCollaboraPath, proxyCollaboraUpgrade } from './collabora-proxy.js'
 import { loadConfigFromEnv } from './config.js'
 
 const cfg = loadConfigFromEnv()
@@ -18,7 +19,7 @@ const cfg = loadConfigFromEnv()
 await ensureDataDir(cfg)
 const { app } = await createApp(cfg)
 
-app.listen(cfg.port, () => {
+const server = app.listen(cfg.port, () => {
   console.log(`[wopi-host] listening on :${cfg.port}`)
   console.log(`[wopi-host] data dir: ${resolve(cfg.dataDir)}`)
   console.log(`[wopi-host] WOPISrc base (as coolwsd sees us): ${cfg.wopiPublicBase}`)
@@ -33,3 +34,15 @@ app.listen(cfg.port, () => {
     console.log(`[wopi-host] dev token choices: ${listDevTokenChoices(cfg).map((c) => c.label).join(' | ')}`)
   }
 })
+
+// Collabora document sessions speak WebSocket (/cool/<doc>/ws); tunnel the
+// upgrade to coolwsd so the editor works through the same-origin proxy.
+if (cfg.collaboraSameOrigin) {
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url && isCollaboraPath(req.url)) {
+      proxyCollaboraUpgrade(cfg.collaboraInternalUrl, req, socket, head)
+    } else {
+      socket.destroy()
+    }
+  })
+}

@@ -7,8 +7,10 @@ import { resetPendingWorkbookSource } from './bridge/sheets-api'
 import { resetPendingSlidesSource } from './bridge/slides-api'
 import { makeBlankDocx, makeBlankPdf, makeBlankXlsx } from './blank-docs'
 import {
+  FULL_TOOLBAR_EXTS,
   OFFICE_FILE_ACCEPT,
   OFFICE_ROUTES as OPEN_ROUTES,
+  officeHref,
   openOfficeFile,
 } from './open-office-file'
 import {
@@ -51,6 +53,10 @@ const SheetsApp = lazy(() =>
 const SlidesApp = lazy(() =>
   import('./apps/slides/SlidesApp').then((m) => ({ default: m.SlidesApp })),
 )
+const CollaboraApp = lazy(() =>
+  import('./apps/collabora/CollaboraApp').then((m) => ({ default: m.CollaboraApp })),
+)
+const TextApp = lazy(() => import('./apps/text/TextApp').then((m) => ({ default: m.TextApp })))
 
 function EditorLoading() {
   return (
@@ -87,6 +93,17 @@ const TYPE_META: Record<string, { label: string; zh: string; bg: string; fg: str
   xlsx: { label: 'X', zh: '表格', bg: '#e6f2eb', fg: '#107c41' },
   pptx: { label: 'P', zh: '演示', bg: '#fcece7', fg: '#d24726' },
   pdf: { label: 'PDF', zh: 'PDF', bg: '#f3f2f1', fg: '#605e5c' },
+  doc: { label: 'W', zh: '文档', bg: '#e9f2fb', fg: '#185abd' },
+  odt: { label: 'ODT', zh: '文档', bg: '#e9f2fb', fg: '#185abd' },
+  rtf: { label: 'RTF', zh: '文档', bg: '#e9f2fb', fg: '#185abd' },
+  xls: { label: 'X', zh: '表格', bg: '#e6f2eb', fg: '#107c41' },
+  ods: { label: 'ODS', zh: '表格', bg: '#e6f2eb', fg: '#107c41' },
+  csv: { label: 'CSV', zh: '表格', bg: '#e6f2eb', fg: '#107c41' },
+  ppt: { label: 'P', zh: '演示', bg: '#fcece7', fg: '#d24726' },
+  odp: { label: 'ODP', zh: '演示', bg: '#fcece7', fg: '#d24726' },
+  txt: { label: 'TXT', zh: '文本', bg: '#f3f2f1', fg: '#605e5c' },
+  xml: { label: 'XML', zh: '文本', bg: '#f3f2f1', fg: '#605e5c' },
+  ofd: { label: 'OFD', zh: '版式', bg: '#f5eefb', fg: '#7c3aed' },
 }
 
 interface ServerFile {
@@ -108,15 +125,25 @@ function wopiToken(): string {
   return localStorage.getItem('panoffice.wopiToken') ?? 'devtoken'
 }
 
+function serverFileSrc(name: string, contentUrl?: string): string {
+  const base = filesBase()
+  return contentUrl
+    ? resolveServerContentUrl(contentUrl, base, isTauri())
+    : `${base}/wopi/files/${encodeURIComponent(name)}/contents?access_token=${encodeURIComponent(wopiToken())}`
+}
+
 function serverFileHref(name: string, contentUrl?: string): string | null {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   const route = OPEN_ROUTES[ext]
   if (!route) return null
-  const base = filesBase()
-  const src = contentUrl
-    ? resolveServerContentUrl(contentUrl, base, isTauri())
-    : `${base}/wopi/files/${encodeURIComponent(name)}/contents?access_token=${encodeURIComponent(wopiToken())}`
-  return `#/${route}?src=${encodeURIComponent(src)}`
+  return officeHref(route, serverFileSrc(name, contentUrl))
+}
+
+/** Same document in Collabora's full LibreOffice toolbar, when it applies. */
+function fullToolbarHref(name: string, contentUrl?: string): string | null {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  if (!FULL_TOOLBAR_EXTS.has(ext)) return null
+  return officeHref('collabora', serverFileSrc(name, contentUrl))
 }
 
 function navigateOfficeHref(href: string): void {
@@ -549,6 +576,7 @@ function ServerFiles({
           {officeFiles.map((f) => {
             const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
             const href = serverFileHref(f.name, f.contentUrl)
+            const fullHref = fullToolbarHref(f.name, f.contentUrl)
             return (
               <li
                 key={f.name}
@@ -586,6 +614,34 @@ function ServerFiles({
                     {f.name}
                   </span>
                 </a>
+                {fullHref && (
+                  <button
+                    title="用 Collabora 完整工具栏打开（LibreOffice 全功能）"
+                    data-testid="server-file-full-toolbar"
+                    onClick={() => {
+                      onOpened({
+                        key: `server:${f.name}`,
+                        name: f.name,
+                        ext,
+                        contentUrl: f.contentUrl,
+                      })
+                      navigateOfficeHref(fullHref)
+                    }}
+                    style={{
+                      flexShrink: 0,
+                      padding: '3px 9px',
+                      marginRight: 6,
+                      fontSize: 12,
+                      borderRadius: 6,
+                      border: '1px solid #e2e5ea',
+                      background: '#fff',
+                      color: '#4b5563',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    完整工具栏
+                  </button>
+                )}
                 <DeleteIconButton
                   label={`从服务器删除 ${f.name}`}
                   title="从服务器删除"
@@ -958,6 +1014,10 @@ export function App() {
       <SheetsApp key={hash} />
     ) : route === '#/slides' ? (
       <SlidesApp key={hash} />
+    ) : route === '#/collabora' ? (
+      <CollaboraApp key={hash} />
+    ) : route === '#/text' ? (
+      <TextApp key={hash} />
     ) : null
   if (editor === null) return <Home />
   return <Suspense fallback={<EditorLoading />}>{editor}</Suspense>
