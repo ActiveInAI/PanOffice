@@ -34,6 +34,8 @@ const ARCHIVE_COMMANDS = new Set([
   'scan_entries',
   'save_archive',
   'recalc_cells',
+  // answered by the WOPI host itself: server-side staging of a store file
+  'host.stage_store_file',
 ])
 
 /** XLSX-service base URL; production uses the WOPI host's same-origin proxy. */

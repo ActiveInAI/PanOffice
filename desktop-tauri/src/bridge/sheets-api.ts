@@ -51,7 +51,7 @@ import { parsePivotDefinition } from '../apps/sheets/gateway/xlsx-pivot'
 import type { SheetEditPlan } from '../apps/sheets/gateway/xlsx-sheets'
 import { wopiDisplayName } from '../server-files'
 import { createAiBridge } from './ai-stream'
-import { isTauri, platform } from './platform'
+import { isTauri, platform, serverIdForLocalKey } from './platform'
 import {
   isPdfPageSize,
   isRecord,
@@ -77,6 +77,7 @@ import {
   readHostFile,
   stageForSidecar,
   xlsxClient,
+  xlsxRpc,
 } from './xlsx-rpc'
 
 const LANG_KEY = 'panoffice.lang'
@@ -181,8 +182,41 @@ const sessions = new Map<string, SessionInfo>()
 const archiveClient = createRpcArchiveClient()
 const hostIo = createRpcHostIo()
 
-/** sha256 of the logical bytes — detects drift between open and save */
+/** Store id for a workbook source the WOPI host can stage itself: a
+ * `local/<name>` key or a WOPI contents URL; null for anything else. */
+function storeNameOf(logicalPath: string): string | null {
+  return serverIdForLocalKey(logicalPath) ?? wopiDisplayName(logicalPath)
+}
+
+/**
+ * Stage a store-backed workbook on the server (no byte round trip through
+ * the browser) and report its host path and content hash. Null when the
+ * deployment or the file cannot serve the fast path.
+ */
+async function stageStoreFile(
+  logicalPath: string,
+): Promise<{ path: string; sha256: string } | null> {
+  const name = isTauri() ? null : storeNameOf(logicalPath)
+  if (name === null) return null
+  try {
+    const staged = (await xlsxRpc({ command: 'host.stage_store_file', name })) as {
+      path?: unknown
+      sha256?: unknown
+    }
+    if (typeof staged.path !== 'string' || typeof staged.sha256 !== 'string') return null
+    return { path: staged.path, sha256: staged.sha256 }
+  } catch {
+    // legacy browser-local document or a host without the store bridge —
+    // fall back to moving the bytes through the browser
+    return null
+  }
+}
+
+/** sha256 of the logical bytes — detects drift between open and save.
+ * Store-backed workbooks hash on the server; the bytes stay there. */
 async function hashLogical(logicalPath: string): Promise<string> {
+  const staged = await stageStoreFile(logicalPath)
+  if (staged !== null) return staged.sha256
   return sha256Hex(await platform.readFile(logicalPath))
 }
 
@@ -252,6 +286,19 @@ async function openWorkbookPath(logicalPath: string): Promise<WorkbookFile> {
     suggestSaveAs = logicalPath.replace(/\.[^.]+$/, '.xlsx')
     const digest = sha256Hex(converted)
     return openStagedWorkbook(hostPath!, staged, logicalPath, digest, suggestSaveAs, csvImport)
+  }
+  // Fast path: a store-backed workbook is staged by the WOPI host next to
+  // the sidecar — the browser never downloads and re-uploads the bytes.
+  const stagedOnServer = await stageStoreFile(logicalPath)
+  if (stagedOnServer !== null) {
+    return openStagedWorkbook(
+      stagedOnServer.path,
+      true,
+      logicalPath,
+      stagedOnServer.sha256,
+      undefined,
+      undefined,
+    )
   }
   const bytes = await platform.readFile(logicalPath)
   hostPath = await stageForSidecar(logicalPath, bytes)

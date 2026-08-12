@@ -4,8 +4,9 @@
  * version archiving, and the dev index/edit pages.
  */
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
+import { createHash } from 'node:crypto'
 import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
-import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { canWrite, listDevTokenChoices, TokenResolver } from './auth.js'
 import type { WopiHostConfig, WopiUser } from './config.js'
@@ -277,6 +278,66 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
   // Browser-mode spreadsheets need the native XLSX engine. Keep that engine
   // on loopback and expose only this origin-checked, same-origin RPC bridge.
   if (cfg.xlsxRpcUrl) {
+    /**
+     * `host.stage_store_file` is answered here instead of being forwarded:
+     * the workbook already sits in this host's file store, so it is staged
+     * for the sidecar server-side. The browser then never downloads and
+     * re-uploads the bytes just to open a document — over a far link that
+     * round trip dominated open time and large bodies aborted outright.
+     */
+    async function stageStoreFile(
+      envelope: { requestId?: unknown; name?: unknown },
+      res: Response,
+    ): Promise<void> {
+      const requestId = typeof envelope.requestId === 'string' ? envelope.requestId : ''
+      const name = typeof envelope.name === 'string' ? envelope.name : ''
+      const p = filePathFor(name)
+      const fail = (code: string, message: string, status = 200): void => {
+        res.status(status).json({ version: 1, requestId, ok: false, error: { code, message } })
+      }
+      if (!p || !existsSync(p) || !statSync(p).isFile()) {
+        fail('not_found', 'No such store file.')
+        return
+      }
+      try {
+        const bytes = await readFile(p)
+        const upstream = await fetch(cfg.xlsxRpcUrl!, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            version: 1,
+            requestId,
+            command: 'host.stage',
+            path: `local/${name}`,
+            base64: bytes.toString('base64'),
+          }),
+          redirect: 'error',
+          signal: AbortSignal.timeout(190_000),
+        })
+        const payload = (await upstream.json().catch(() => null)) as {
+          ok?: boolean
+          result?: { path?: unknown }
+        } | null
+        if (!upstream.ok || payload?.ok !== true || typeof payload.result?.path !== 'string') {
+          fail('stage_failed', 'XLSX staging failed.', 502)
+          return
+        }
+        res.set('Cache-Control', 'no-store')
+        res.json({
+          version: 1,
+          requestId,
+          ok: true,
+          result: {
+            path: payload.result.path,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+            size: bytes.length,
+          },
+        })
+      } catch {
+        fail('stage_failed', 'XLSX staging failed.', 502)
+      }
+    }
+
     app.post(
       '/xlsx-sidecar/rpc',
       requireShellOrigin,
@@ -288,6 +349,23 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
             error: { code: 'unsupported_media_type', message: 'Expected application/json.' },
           })
           return
+        }
+        // Only small control envelopes are worth parsing for interception;
+        // byte-carrying commands (host.stage uploads) pass through untouched.
+        if (req.body.length < 4096) {
+          try {
+            const envelope = JSON.parse(req.body.toString('utf8')) as {
+              command?: unknown
+              requestId?: unknown
+              name?: unknown
+            }
+            if (envelope.command === 'host.stage_store_file') {
+              await stageStoreFile(envelope, res)
+              return
+            }
+          } catch {
+            // not JSON we understand — the sidecar will answer it
+          }
         }
         try {
           const upstream = await fetch(cfg.xlsxRpcUrl!, {
@@ -386,6 +464,7 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
           }
           await unlink(p)
         })
+        console.log(`[store] delete ${id} by=${userOf(res).userId} ip=${req.ip}`)
         res.status(204).end()
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -487,6 +566,9 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
         await writeFile(tmp, req.body as Buffer)
         await rename(tmp, p)
       })
+      console.log(
+        `[store] putfile ${id} ${(req.body as Buffer).length}B by=${userOf(res).userId} ip=${req.ip}`,
+      )
       res.set('X-WOPI-ItemVersion', versionIdOf(statSync(p)))
       res.status(200).end()
     },
@@ -563,7 +645,11 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
       const tmp = `${p}.tmp-${process.pid}`
       writeFile(tmp, req.body as Buffer)
         .then(() => rename(tmp, p))
-        .then(() => res.status(201).json({ ok: true, name: basename(p) }))
+        .then(() => {
+          // Store mutations are logged — a vanished file must be traceable.
+          console.log(`[store] upload ${basename(p)} ${(req.body as Buffer).length}B ip=${req.ip}`)
+          res.status(201).json({ ok: true, name: basename(p) })
+        })
         .catch((e: Error) => res.status(500).send(e.message))
     },
   )
