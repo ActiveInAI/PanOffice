@@ -5,6 +5,7 @@ import {
   OFFICE_ROUTES,
   SERVER_EDITED_ROUTES,
   officeHref,
+  ofdPdfExportUrl,
 } from '../src/open-office-file'
 
 describe('format routing', () => {
@@ -48,13 +49,16 @@ describe('officeHref', () => {
     expect(officeHref('text', 'local/notes.txt')).toBe(`#/text?src=${encodeURIComponent('local/notes.txt')}`)
   })
 
-  it('routes OFD to the PDF editor through the host conversion endpoint', () => {
+  it('keeps OFD on its own source: the viewer renders the container natively', () => {
+    const src = 'http://host.test:3210/wopi/files/%E5%8F%91%E7%A5%A8.ofd/contents?access_token=t'
+    expect(officeHref('ofd', src)).toBe(`#/ofd?src=${encodeURIComponent(src)}`)
+  })
+
+  it('still exposes the server-rendered PDF twin for export', () => {
     expect(
-      officeHref(
-        'ofd',
-        'http://host.test:3210/wopi/files/%E5%8F%91%E7%A5%A8.ofd/contents?access_token=t',
-      ),
-    ).toBe(`#/pdf?src=${encodeURIComponent('http://host.test:3210/ofd/%E5%8F%91%E7%A5%A8.ofd/pdf')}`)
+      ofdPdfExportUrl('http://host.test:3210/wopi/files/%E5%8F%91%E7%A5%A8.ofd/contents?access_token=t'),
+    ).toBe('http://host.test:3210/ofd/%E5%8F%91%E7%A5%A8.ofd/pdf')
+    expect(ofdPdfExportUrl('http://host.test:3210/wopi/files/a.docx/contents')).toBeNull()
   })
 })
 

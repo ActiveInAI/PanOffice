@@ -57,6 +57,7 @@ const CollaboraApp = lazy(() =>
   import('./apps/collabora/CollaboraApp').then((m) => ({ default: m.CollaboraApp })),
 )
 const TextApp = lazy(() => import('./apps/text/TextApp').then((m) => ({ default: m.TextApp })))
+const OfdApp = lazy(() => import('./apps/ofd/OfdApp').then((m) => ({ default: m.OfdApp })))
 
 function EditorLoading() {
   return (
@@ -1018,6 +1019,8 @@ export function App() {
       <CollaboraApp key={hash} />
     ) : route === '#/text' ? (
       <TextApp key={hash} />
+    ) : route === '#/ofd' ? (
+      <OfdApp key={hash} />
     ) : null
   if (editor === null) return <Home />
   return <Suspense fallback={<EditorLoading />}>{editor}</Suspense>

@@ -190,20 +190,23 @@ export async function openOfficeFile(
 }
 
 /**
- * Hash route for a source. OFD has no native editor: the PDF editor opens
- * the host's converted twin (`/ofd/<name>/pdf`), which is why the route
- * carries a rewritten src instead of the original document URL.
+ * Hash route for a source. OFD renders natively in the browser (the shell
+ * unzips and paints the document itself), so it keeps its own source URL;
+ * the host's `/ofd/<name>/pdf` conversion stays available for export only.
  */
 export function officeHref(route: OfficeRoute, src: string): string {
-  if (route !== 'ofd') return `#/${route}?src=${encodeURIComponent(src)}`
+  return `#/${route}?src=${encodeURIComponent(src)}`
+}
+
+/** Server-rendered PDF twin of an OFD — export/print fallback, not viewing. */
+export function ofdPdfExportUrl(src: string): string | null {
   const name = wopiDisplayName(src) ?? src.replace(/^local\//, '')
-  let base = ''
+  if (!/\.ofd$/i.test(name)) return null
   try {
-    base = new URL(src).origin
+    return `${new URL(src).origin}/ofd/${encodeURIComponent(name)}/pdf`
   } catch {
-    base = ''
+    return null
   }
-  return `#/pdf?src=${encodeURIComponent(`${base}/ofd/${encodeURIComponent(name)}/pdf`)}`
 }
 
 export async function pickAndOpenOfficeFile(): Promise<boolean> {
