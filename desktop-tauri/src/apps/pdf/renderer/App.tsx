@@ -2217,8 +2217,8 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="ribbon-sep" />
-          {/* ---- AI assistant (PanAI entry on the ribbon) ---- */}
+          {/* ---- AI assistant (PanAI entry pinned to the ribbon's right end) ---- */}
+          <div className="ribbon-sep" style={{ marginLeft: 'auto' }} />
           <div className="ribbon-group">
             <div className="ribbon-group-items">
               <button

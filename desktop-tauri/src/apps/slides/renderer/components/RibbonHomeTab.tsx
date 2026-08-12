@@ -1088,6 +1088,19 @@ export function RibbonHomeTab({ rb }: { rb: RibbonTabCtx }) {
           <span>{t('ribbonFindReplace')}</span>
         </button>
       </Group>
+      <div className="ribbon-panai-sep" aria-hidden />
+      <button
+        className="ribbon-panai-btn"
+        title={t('aiOpenAssistant')}
+        aria-pressed={aiOpen}
+        data-testid="panai-toggle-ribbon-end"
+        onClick={onToggleAi}
+      >
+        <PanAiMark size={28} />
+        <span className="notranslate" translate="no">
+          PanAI
+        </span>
+      </button>
     </>
   )
 }

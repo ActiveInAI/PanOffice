@@ -1335,14 +1335,14 @@ export function AiPanel({
   const removeAttachment = (path: string) =>
     setAttachments((prev) => prev.filter((a) => a.path !== path))
 
-  /** Drag the right edge to resize: the panel is flush with the window's left edge, so width = clientX */
+  /** Drag the left edge to resize: the panel is flush with the window's right edge, so width = innerWidth - clientX */
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     setResizing(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     const onMove = (ev: PointerEvent) => {
-      setPanelWidth(clampPanelWidth(ev.clientX))
+      setPanelWidth(clampPanelWidth(window.innerWidth - ev.clientX))
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)

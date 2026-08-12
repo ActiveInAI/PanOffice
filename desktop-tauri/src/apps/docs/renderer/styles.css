@@ -3925,15 +3925,15 @@ body.docs-crop-active
   flex-direction: column;
   background: var(--color-bg-page);
   /* Same visible divider as the GenOffice Sheets panel: the editor canvas is gray, so the default border would drown */
-  border-right: 1px solid var(--color-border-strong);
+  border-left: 1px solid var(--color-border-strong);
   font-family: var(--gs-font-sans);
   color: var(--color-text-primary);
 }
 
-/* drag handle on the panel's right edge — resize the panel horizontally */
+/* drag handle on the panel's left edge — resize the panel horizontally */
 .ai-panel-resizer {
   position: absolute;
-  right: -3px;
+  left: -3px;
   top: 0;
   bottom: 0;
   width: 7px;
@@ -6754,6 +6754,46 @@ tr > .page-gap-cut {
   width: var(--ai-panel-width, 360px);
   overflow: hidden;
   transition: width 180ms ease;
+  /* PanAI panel docks on the RIGHT (last in the workspace flex row). */
+  order: 10;
+}
+
+/* The PanAI entry brings its own separator — drop the preceding group's
+ * hairline so the two don't render as a double line */
+.ribbon-group:has(+ .ribbon-panai-sep)::after {
+  display: none;
+}
+
+/* PanAI entry pinned to the Home ribbon's right end: vertical hairline +
+ * icon-over-label button, same spec as the Sheets ribbon AI button */
+.ribbon-panai-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 6px;
+  margin-left: auto;
+  background: var(--color-border-default);
+  flex-shrink: 0;
+}
+
+.ribbon-panai-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ribbon-panai-btn:hover {
+  background: #f3f2f1;
 }
 
 .ai-dock.collapsed {

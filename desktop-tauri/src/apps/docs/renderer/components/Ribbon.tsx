@@ -2421,6 +2421,19 @@ export function Ribbon({
               </div>
               <div className="ribbon-group-label">{t('ribbonGroupStyles')}</div>
             </div>
+            <div className="ribbon-panai-sep" aria-hidden />
+            <button
+              className="ribbon-panai-btn"
+              title={t('aiOpenAssistant')}
+              aria-pressed={showAi}
+              data-testid="panai-toggle-ribbon-end"
+              onClick={onToggleAi}
+            >
+              <PanAiMark size={28} />
+              <span className="notranslate" translate="no">
+                PanAI
+              </span>
+            </button>
           </>
         ) : tab === 'draw' ? (
           <DrawTab

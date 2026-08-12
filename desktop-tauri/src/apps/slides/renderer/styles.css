@@ -1150,16 +1150,16 @@ body.vib .slide-list {
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-right: 1px solid var(--border);
-  box-shadow: 4px 0 16px rgba(82, 41, 31, 0.05);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 16px rgba(82, 41, 31, 0.05);
   font-family: var(--gs-font-sans);
   color: var(--color-text-primary);
 }
 
-/* drag handle on the panel's right edge — resize the panel horizontally (no highlight, cursor-only affordance) */
+/* drag handle on the panel's left edge — resize the panel horizontally (no highlight, cursor-only affordance) */
 .ai-panel-resizer {
   position: absolute;
-  right: 0;
+  left: 0;
   top: 0;
   bottom: 0;
   width: 6px;
@@ -6369,10 +6369,50 @@ body.vib .slide-list {
   width: var(--ai-panel-width, 360px);
   overflow: hidden;
   transition: width 180ms ease;
+  /* PanAI panel docks on the RIGHT (last in the stage flex row). */
+  order: 10;
 }
 
 .ai-dock.collapsed {
   width: 0;
+}
+
+/* The PanAI entry brings its own separator — drop the preceding group's
+ * hairline so the two don't render as a double line */
+.ribbon-group:has(+ .ribbon-panai-sep)::after {
+  display: none;
+}
+
+/* PanAI entry pinned to the Home ribbon's right end: vertical hairline +
+ * icon-over-label button, same spec as the Sheets ribbon AI button */
+.ribbon-panai-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 6px;
+  margin-left: auto;
+  background: var(--color-border-default);
+  flex-shrink: 0;
+}
+
+.ribbon-panai-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ribbon-panai-btn:hover {
+  background: #f3f2f1;
 }
 
 /* while dragging the resizer, follow the pointer without easing */

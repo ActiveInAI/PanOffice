@@ -630,14 +630,14 @@ export function AiPanel({
     setSnapshots((prev) => prev.filter((s) => s !== snapshot))
   }
 
-  /** drag the panel's right edge to resize; panel is flush with the window's left edge */
+  /** drag the panel's left edge to resize; panel is flush with the window's right edge */
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     setResizing(true)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     const onMove = (ev: PointerEvent) => {
-      setPanelWidth(clampPanelWidth(ev.clientX))
+      setPanelWidth(clampPanelWidth(window.innerWidth - ev.clientX))
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
