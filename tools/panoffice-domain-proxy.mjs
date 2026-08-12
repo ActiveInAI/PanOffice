@@ -2,6 +2,7 @@
 
 import http from 'node:http'
 import { URL } from 'node:url'
+import { createGzip, gzipSync } from 'node:zlib'
 
 const listenHost = process.env.PANOFFICE_DOMAIN_PROXY_HOST || '127.0.0.1'
 const listenPort = Number(process.env.PANOFFICE_DOMAIN_PROXY_PORT || '3000')
@@ -50,6 +51,20 @@ function publicValue(value) {
   return String(value).split(upstreamOrigin).join(publicOrigin.origin)
 }
 
+/**
+ * The upstream is asked for identity encoding (bodies may need rewriting),
+ * so without this the tunnel would carry multi-MB editor bundles raw. Text
+ * types the client accepts gzip for are compressed on the way out.
+ */
+const COMPRESSIBLE = /^(text\/|application\/(javascript|x-javascript|json|xml|wasm))/
+function wantsGzip(req, headers) {
+  return (
+    /\bgzip\b/i.test(String(req.headers['accept-encoding'] ?? '')) &&
+    !headers['content-encoding'] &&
+    COMPRESSIBLE.test(String(headers['content-type'] ?? '').toLowerCase())
+  )
+}
+
 function responseHeaders(rawHeaders, rewritten) {
   const headers = {}
   for (const [name, value] of Object.entries(rawHeaders)) {
@@ -75,7 +90,18 @@ const server = http.createServer((req, res) => {
       const contentType = String(upstreamRes.headers['content-type'] || '').toLowerCase()
       const rewrite = contentType.includes('application/json') || contentType.includes('text/html')
       if (!rewrite) {
-        res.writeHead(upstreamRes.statusCode || 502, responseHeaders(upstreamRes.headers, false))
+        const headers = responseHeaders(upstreamRes.headers, false)
+        if (wantsGzip(req, headers)) {
+          delete headers['content-length']
+          res.writeHead(upstreamRes.statusCode || 502, {
+            ...headers,
+            'content-encoding': 'gzip',
+            vary: 'Accept-Encoding',
+          })
+          upstreamRes.pipe(createGzip()).pipe(res)
+          return
+        }
+        res.writeHead(upstreamRes.statusCode || 502, headers)
         upstreamRes.pipe(res)
         return
       }
@@ -91,9 +117,15 @@ const server = http.createServer((req, res) => {
         chunks.push(chunk)
       })
       upstreamRes.on('end', () => {
-        const body = Buffer.from(publicValue(Buffer.concat(chunks).toString('utf8')))
+        let body = Buffer.from(publicValue(Buffer.concat(chunks).toString('utf8')))
+        const headers = responseHeaders(upstreamRes.headers, true)
+        if (wantsGzip(req, headers)) {
+          body = gzipSync(body)
+          headers['content-encoding'] = 'gzip'
+          headers.vary = 'Accept-Encoding'
+        }
         res.writeHead(upstreamRes.statusCode || 502, {
-          ...responseHeaders(upstreamRes.headers, true),
+          ...headers,
           'content-length': String(body.length),
         })
         res.end(body)

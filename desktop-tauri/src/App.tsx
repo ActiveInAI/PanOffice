@@ -1,8 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { DocsApp } from './apps/docs/DocsApp'
-import { PdfApp } from './apps/pdf/PdfApp'
-import { SheetsApp } from './apps/sheets/SheetsApp'
-import { SlidesApp } from './apps/slides/SlidesApp'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { LOGO_SVG } from './branding'
 import { resetPendingDocumentSource } from './bridge/desktop-api'
 import { resetPendingPdfSource } from './bridge/pdf-api'
@@ -43,6 +39,38 @@ import {
  * A `src` may be a local/overlay path or a remote WOPI contents URL
  * (http(s)://…/wopi/files/<name>/contents?access_token=…).
  */
+
+// Each editor loads as its own chunk: the four renderers together are ~15MB
+// of JS, and shipping them all just to draw the home screen made every cold
+// boot (and every open over the tunnel) pay for all four editors at once.
+const DocsApp = lazy(() => import('./apps/docs/DocsApp').then((m) => ({ default: m.DocsApp })))
+const PdfApp = lazy(() => import('./apps/pdf/PdfApp').then((m) => ({ default: m.PdfApp })))
+const SheetsApp = lazy(() =>
+  import('./apps/sheets/SheetsApp').then((m) => ({ default: m.SheetsApp })),
+)
+const SlidesApp = lazy(() =>
+  import('./apps/slides/SlidesApp').then((m) => ({ default: m.SlidesApp })),
+)
+
+function EditorLoading() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        fontFamily: 'system-ui, sans-serif',
+        color: '#6b7280',
+        fontSize: 14,
+      }}
+    >
+      <img src={LOGO_SVG} alt="" width={22} height={22} />
+      正在载入编辑器…
+    </div>
+  )
+}
 
 function useHashRoute(): string {
   const [hash, setHash] = useState(() => window.location.hash)
@@ -919,9 +947,16 @@ export function App() {
   const route = hash.split('?')[0] ?? ''
   // Key on the full source route: opening a second file of the same type must
   // mount a fresh editor that consumes its newly queued source.
-  if (route === '#/pdf') return <PdfApp key={hash} />
-  if (route === '#/docs') return <DocsApp key={hash} />
-  if (route === '#/sheets') return <SheetsApp key={hash} />
-  if (route === '#/slides') return <SlidesApp key={hash} />
-  return <Home />
+  const editor =
+    route === '#/pdf' ? (
+      <PdfApp key={hash} />
+    ) : route === '#/docs' ? (
+      <DocsApp key={hash} />
+    ) : route === '#/sheets' ? (
+      <SheetsApp key={hash} />
+    ) : route === '#/slides' ? (
+      <SlidesApp key={hash} />
+    ) : null
+  if (editor === null) return <Home />
+  return <Suspense fallback={<EditorLoading />}>{editor}</Suspense>
 }
