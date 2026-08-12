@@ -18,7 +18,11 @@ import {
   removeRecent,
   type RecentEntry,
 } from './recent-files'
-import { resolveFilesBase, resolveServerContentUrl } from './server-files'
+import {
+  resolveFilesBase,
+  resolveServerContentUrl,
+  resolveServerDeleteUrl,
+} from './server-files'
 
 /**
  * PanOffice Tauri shell — unified on the GenOffice editors (M8).
@@ -191,6 +195,61 @@ function TypeTile({ ext, size = 44 }: { ext: string; size?: number }) {
   )
 }
 
+function DeleteIconButton({
+  label,
+  title,
+  testId,
+  disabled = false,
+  onClick,
+}: {
+  label: string
+  title: string
+  testId: string
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={title}
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        display: 'grid',
+        placeItems: 'center',
+        width: 28,
+        height: 28,
+        padding: 0,
+        border: 0,
+        borderRadius: 6,
+        background: 'transparent',
+        color: '#8a909c',
+        cursor: disabled ? 'wait' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        flexShrink: 0,
+      }}
+      onMouseEnter={(event) => {
+        if (disabled) return
+        event.currentTarget.style.background = '#feeceb'
+        event.currentTarget.style.color = '#c42b1c'
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = 'transparent'
+        event.currentTarget.style.color = '#8a909c'
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M4 7h16" />
+        <path d="M9 7V4h6v3" />
+        <path d="m6 7 1 13h10l1-13" />
+        <path d="M10 11v5M14 11v5" />
+      </svg>
+    </button>
+  )
+}
+
 // ---- new-document cards ----
 
 interface NewCard {
@@ -300,14 +359,17 @@ function NewDocCards({ onOpenLocal }: { onOpenLocal: () => void }) {
 function ServerFiles({
   onOpened,
   onFilesLoaded,
+  onDeleted,
 }: {
   onOpened: (e: Omit<RecentEntry, 'ts'>) => void
   onFilesLoaded: (files: ServerFile[]) => void
+  onDeleted: (file: ServerFile) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<ServerFile[] | null>(null)
   const [unreachable, setUnreachable] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const refresh = async (): Promise<void> => {
     try {
@@ -345,6 +407,37 @@ function ServerFiles({
       alert(`upload failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const onDelete = async (file: ServerFile): Promise<void> => {
+    const confirmed = window.confirm(
+      `确定要从服务器删除“${file.name}”吗？此操作无法在 PanOffice 中撤销。`,
+    )
+    if (!confirmed) return
+
+    setDeleting(file.name)
+    try {
+      const url = resolveServerDeleteUrl(
+        file.name,
+        file.contentUrl,
+        filesBase(),
+        wopiToken(),
+        isTauri(),
+      )
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('当前账号没有删除此文件的权限。')
+        if (res.status === 409) throw new Error('文件正在编辑或已锁定，请关闭编辑器后重试。')
+        if (res.status === 404) throw new Error('文件已不存在，请刷新列表。')
+        throw new Error(`服务器返回 HTTP ${res.status}`)
+      }
+      onDeleted(file)
+      await refresh()
+    } catch (error) {
+      alert(`删除失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -396,7 +489,12 @@ function ServerFiles({
             const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
             const href = serverFileHref(f.name, f.contentUrl)
             return (
-              <li key={f.name}>
+              <li
+                key={f.name}
+                style={{ display: 'flex', alignItems: 'center', borderRadius: 8 }}
+                onMouseEnter={(event) => (event.currentTarget.style.background = '#f6f7f9')}
+                onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
+              >
                 <a
                   href={href ?? '#'}
                   onClick={(event) => {
@@ -412,6 +510,8 @@ function ServerFiles({
                   }}
                   style={{
                     display: 'flex',
+                    flex: 1,
+                    minWidth: 0,
                     alignItems: 'center',
                     gap: 12,
                     padding: '7px 8px',
@@ -419,15 +519,22 @@ function ServerFiles({
                     textDecoration: 'none',
                     color: href ? '#1f2329' : '#8a909c',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f6f7f9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <TypeTile ext={ext} size={30} />
-                  <span style={{ fontSize: 14 }}>{f.name}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9aa0ab' }}>
-                    {formatDate(f.mtimeMs)} · {formatSize(f.size)}
+                  <span style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name}
                   </span>
                 </a>
+                <DeleteIconButton
+                  label={`从服务器删除 ${f.name}`}
+                  title="从服务器删除"
+                  testId="server-file-delete"
+                  disabled={deleting === f.name}
+                  onClick={() => void onDelete(f)}
+                />
+                <span style={{ width: 190, paddingRight: 8, textAlign: 'right', fontSize: 12, color: '#9aa0ab' }}>
+                  {formatDate(f.mtimeMs)} · {formatSize(f.size)}
+                </span>
               </li>
             )
           })}
@@ -530,40 +637,12 @@ function Recents({
                   {r.name}
                 </span>
               </a>
-              <button
-                type="button"
-                aria-label={`从最近使用中移除 ${r.name}`}
+              <DeleteIconButton
+                label={`从最近使用中移除 ${r.name}`}
                 title="从最近使用中移除"
-                data-testid="recent-remove"
+                testId="recent-remove"
                 onClick={() => onRemove(r)}
-                style={{
-                  display: 'grid',
-                  placeItems: 'center',
-                  width: 28,
-                  height: 28,
-                  padding: 0,
-                  border: 0,
-                  borderRadius: 6,
-                  background: 'transparent',
-                  color: '#8a909c',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#feeceb'
-                  e.currentTarget.style.color = '#c42b1c'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = '#8a909c'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M4 7h16" />
-                  <path d="M9 7V4h6v3" />
-                  <path d="m6 7 1 13h10l1-13" />
-                  <path d="M10 11v5M14 11v5" />
-                </svg>
-              </button>
+              />
               <span style={{ width: 128, paddingRight: 8, textAlign: 'right', fontSize: 12, color: '#9aa0ab' }}>
                 {formatDate(r.ts)}
               </span>
@@ -671,13 +750,15 @@ function Home() {
   }
 
   const remember = (e: Omit<RecentEntry, 'ts'>): void => setRecents(pushRecent(e))
-  const forget = (entry: RecentEntry): void => {
+  const forgetKey = (key: string): void => {
     setRecents((current) => {
-      const next = removeRecent(current, entry.key)
+      const next = removeRecent(current, key)
       persistRecents(next)
       return next
     })
   }
+  const forget = (entry: RecentEntry): void => forgetKey(entry.key)
+  const forgetServerFile = (file: ServerFile): void => forgetKey(`server:${file.name}`)
 
   const syncServerSources = (files: ServerFile[]): void => {
     const urls = new Map(files.map((file) => [file.name, file.contentUrl]))
@@ -772,7 +853,11 @@ function Home() {
         {opening && <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>打开中…</p>}
 
         <div ref={serverRef} style={{ scrollMarginTop: 20 }}>
-          <ServerFiles onOpened={remember} onFilesLoaded={syncServerSources} />
+          <ServerFiles
+            onOpened={remember}
+            onFilesLoaded={syncServerSources}
+            onDeleted={forgetServerFile}
+          />
         </div>
 
         <div ref={recentRef} style={{ scrollMarginTop: 20 }}>

@@ -5,7 +5,7 @@
  */
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
 import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
-import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 import { canWrite, listDevTokenChoices, TokenResolver } from './auth.js'
 import type { WopiHostConfig, WopiUser } from './config.js'
@@ -112,6 +112,21 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
     next()
   }
 
+  /** Only top-level, non-hidden regular files shown by /files.json are
+   * deletable from the shell file manager. Internal archives and directories
+   * must never become reachable through the delete endpoint. */
+  function requireListedFile(req: Request, res: Response, next: NextFunction): void {
+    const id = req.params.id
+    const normalized = id.replace(/\\/g, '/')
+    const p = !normalized.startsWith('.') && !normalized.includes('/') ? filePathFor(id) : null
+    if (!p || !existsSync(p) || !statSync(p).isFile()) {
+      res.status(404).json({ error: 'no such file' })
+      return
+    }
+    res.locals.filePath = p
+    next()
+  }
+
   function requireWrite(req: Request, res: Response, next: NextFunction): void {
     if (!canWrite(userOf(res), req.params.id)) {
       res.status(403).send('read-only access')
@@ -160,7 +175,7 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
   // Covers WOPI plus the shell's file-manager endpoints (/files.json, /upload).
   function shellCors(req: Request, res: Response, next: NextFunction): void {
     res.set('Access-Control-Allow-Origin', cfg.pdfAppOrigin)
-    res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.set('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-WOPI-Override, X-WOPI-Lock')
     if (req.method === 'OPTIONS') {
       res.status(204).end()
@@ -330,6 +345,42 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
     res.set('X-WOPI-ItemVersion', versionIdOf(statSync(p)))
     createReadStream(p).pipe(res)
   })
+
+  // Delete a file exposed by the shell file manager. This is an authenticated
+  // write operation and is serialized with PutFile so save/delete cannot race.
+  // Locked files stay intact until their editor releases the WOPI lock.
+  app.delete(
+    '/wopi/files/:id',
+    requireListedFile,
+    requireWrite,
+    async (req: Request, res: Response) => {
+      const id = req.params.id
+      const current = locks.get(id)
+      if (current) {
+        res.set('X-WOPI-Lock', current.token)
+        res.status(409).json({ error: 'file is locked' })
+        return
+      }
+      try {
+        await putMutex.runExclusive(id, async () => {
+          const p = res.locals.filePath as string
+          if (!existsSync(p) || !statSync(p).isFile()) {
+            const error = new Error('no such file') as NodeJS.ErrnoException
+            error.code = 'ENOENT'
+            throw error
+          }
+          await unlink(p)
+        })
+        res.status(204).end()
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          res.status(404).json({ error: 'no such file' })
+          return
+        }
+        res.status(500).json({ error: 'delete failed' })
+      }
+    },
+  )
 
   // Versions listing (dev extension; archives live under dataDir/.versions)
   app.get('/wopi/files/:id/versions', requireFile, async (req: Request, res: Response) => {

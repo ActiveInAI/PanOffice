@@ -116,4 +116,28 @@ describe('permission enforcement', () => {
     ).json()) as { versions: unknown[] }
     expect(versions.versions).toEqual([])
   })
+
+  it('requires per-file write permission to delete a server file', async () => {
+    const srv = await setup()
+    const readOnlyDelete = await fetch(
+      wopiUrl(srv.base, '/wopi/files/a.docx', 'tok-ro'),
+      { method: 'DELETE' },
+    )
+    expect(readOnlyDelete.status).toBe(403)
+    expect((await fetch(wopiUrl(srv.base, '/wopi/files/a.docx', 'tok-rw'))).status).toBe(200)
+
+    const writableDelete = await fetch(
+      wopiUrl(srv.base, '/wopi/files/a.docx', 'tok-mixed'),
+      { method: 'DELETE' },
+    )
+    expect(writableDelete.status).toBe(204)
+    expect((await fetch(wopiUrl(srv.base, '/wopi/files/a.docx', 'tok-rw'))).status).toBe(404)
+
+    const mappedReadOnlyDelete = await fetch(
+      wopiUrl(srv.base, '/wopi/files/b.docx', 'tok-mixed'),
+      { method: 'DELETE' },
+    )
+    expect(mappedReadOnlyDelete.status).toBe(403)
+    expect((await fetch(wopiUrl(srv.base, '/wopi/files/b.docx', 'tok-rw'))).status).toBe(200)
+  })
 })

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolveFilesBase, resolveServerContentUrl } from '../src/server-files'
+import {
+  resolveFilesBase,
+  resolveServerContentUrl,
+  resolveServerDeleteUrl,
+} from '../src/server-files'
 
 describe('resolveFilesBase', () => {
   it('uses the deployed shell origin for a remote web page', () => {
@@ -46,6 +50,48 @@ describe('resolveServerContentUrl', () => {
     const contentUrl = 'http://192.168.1.100:3210/wopi/files/a.docx/contents?access_token=test'
     expect(resolveServerContentUrl(contentUrl, 'http://127.0.0.1:3210', true)).toBe(
       contentUrl,
+    )
+  })
+})
+
+describe('resolveServerDeleteUrl', () => {
+  it('uses the authorized listing URL and routes it through the current web origin', () => {
+    expect(
+      resolveServerDeleteUrl(
+        'a.docx',
+        'http://192.168.1.100:3210/wopi/files/a.docx/contents?access_token=deployment-token',
+        'https://panoffice.example.test',
+        'wrong-fallback',
+      ),
+    ).toBe(
+      'https://panoffice.example.test/wopi/files/a.docx?access_token=deployment-token',
+    )
+  })
+
+  it('keeps the deployment origin for native Tauri', () => {
+    expect(
+      resolveServerDeleteUrl(
+        'a.docx',
+        'http://192.168.1.100:3210/wopi/files/a.docx/contents?access_token=deployment-token',
+        'http://127.0.0.1:3210',
+        'wrong-fallback',
+        true,
+      ),
+    ).toBe(
+      'http://192.168.1.100:3210/wopi/files/a.docx?access_token=deployment-token',
+    )
+  })
+
+  it('builds a tokened fallback when the listing has no usable contents URL', () => {
+    expect(
+      resolveServerDeleteUrl(
+        '工程 计划.xlsx',
+        undefined,
+        'http://127.0.0.1:5190/',
+        'dev token',
+      ),
+    ).toBe(
+      'http://127.0.0.1:5190/wopi/files/%E5%B7%A5%E7%A8%8B%20%E8%AE%A1%E5%88%92.xlsx?access_token=dev%20token',
     )
   })
 })

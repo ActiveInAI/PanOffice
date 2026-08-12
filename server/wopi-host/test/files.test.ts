@@ -54,6 +54,7 @@ describe('GET /files.json (shell file-manager listing)', () => {
     const pre = await fetch(`${srv.base}/files.json`, { method: 'OPTIONS' })
     expect(pre.status).toBe(204)
     expect(pre.headers.get('access-control-allow-origin')).toBe('http://shell.test')
+    expect(pre.headers.get('access-control-allow-methods')).toContain('DELETE')
   })
 
   it('upload is CORS-enabled too, and uploaded files appear in the listing', async () => {
@@ -65,5 +66,58 @@ describe('GET /files.json (shell file-manager listing)', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('http://shell.test')
     const list = (await (await fetch(`${srv.base}/files.json`)).json()) as { name: string }[]
     expect(list.map((f) => f.name)).toContain('x.docx')
+  })
+
+  it('deletes a listed file with the listing token and removes it from the listing', async () => {
+    const list = (await (await fetch(`${srv.base}/files.json`)).json()) as {
+      name: string
+      contentUrl?: string
+    }[]
+    const file = list.find((entry) => entry.name === 'a.docx')!
+    const deleteUrl = new URL(file.contentUrl!)
+    deleteUrl.host = new URL(srv.base).host
+    deleteUrl.pathname = deleteUrl.pathname.replace(/\/contents$/, '')
+
+    const pre = await fetch(deleteUrl, { method: 'OPTIONS' })
+    expect(pre.status).toBe(204)
+    expect(pre.headers.get('access-control-allow-methods')).toContain('DELETE')
+
+    const removed = await fetch(deleteUrl, { method: 'DELETE' })
+    expect(removed.status).toBe(204)
+    expect((await fetch(deleteUrl)).status).toBe(404)
+    const after = (await (await fetch(`${srv.base}/files.json`)).json()) as { name: string }[]
+    expect(after.map((entry) => entry.name)).toEqual(['b.xlsx'])
+  })
+
+  it('does not expose hidden files or nested paths to DELETE', async () => {
+    await writeFile(join(srv.dataDir, 'subdir', 'child.docx'), 'child')
+    const hidden = await fetch(`${srv.base}/wopi/files/.hidden?access_token=devtoken`, {
+      method: 'DELETE',
+    })
+    expect(hidden.status).toBe(404)
+    const nested = await fetch(
+      `${srv.base}/wopi/files/subdir%2Fchild.docx?access_token=devtoken`,
+      { method: 'DELETE' },
+    )
+    expect(nested.status).toBe(404)
+  })
+
+  it('keeps a locked file until its WOPI lock is released', async () => {
+    const fileUrl = `${srv.base}/wopi/files/a.docx?access_token=devtoken`
+    expect((await fetch(fileUrl, {
+      method: 'POST',
+      headers: { 'X-WOPI-Override': 'LOCK', 'X-WOPI-Lock': 'editor-lock' },
+    })).status).toBe(200)
+
+    const blocked = await fetch(fileUrl, { method: 'DELETE' })
+    expect(blocked.status).toBe(409)
+    expect(blocked.headers.get('x-wopi-lock')).toBe('editor-lock')
+    expect((await fetch(fileUrl)).status).toBe(200)
+
+    expect((await fetch(fileUrl, {
+      method: 'POST',
+      headers: { 'X-WOPI-Override': 'UNLOCK', 'X-WOPI-Lock': 'editor-lock' },
+    })).status).toBe(200)
+    expect((await fetch(fileUrl, { method: 'DELETE' })).status).toBe(204)
   })
 })

@@ -70,3 +70,29 @@ export function resolveServerContentUrl(
     return contentUrl
   }
 }
+
+/**
+ * Turn an authorized WOPI contents URL from the server listing into the
+ * corresponding file-resource URL used by DELETE. Keeping the listing token
+ * avoids silently falling back to a different deployment credential.
+ */
+export function resolveServerDeleteUrl(
+  name: string,
+  contentUrl: string | undefined,
+  filesBase: string,
+  fallbackToken: string,
+  nativeTauri = false,
+): string {
+  const fallback = `${withoutTrailingSlash(filesBase)}/wopi/files/${encodeURIComponent(name)}?access_token=${encodeURIComponent(fallbackToken)}`
+  if (!contentUrl) return fallback
+
+  try {
+    const resolved = resolveServerContentUrl(contentUrl, filesBase, nativeTauri)
+    const url = new URL(resolved, `${withoutTrailingSlash(filesBase)}/`)
+    if (!url.pathname.endsWith('/contents')) return fallback
+    url.pathname = url.pathname.slice(0, -'/contents'.length)
+    return url.toString()
+  } catch {
+    return fallback
+  }
+}
