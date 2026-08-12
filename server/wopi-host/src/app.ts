@@ -314,7 +314,22 @@ export async function createApp(cfg: WopiHostConfig): Promise<WopiHostApp> {
 
   // PanOffice Web 壳（GenOffice 编辑器）挂载在根路径；API 路由不受影响。
   if (cfg.shellDir) {
-    app.use(express.static(resolve(cfg.shellDir), { index: 'index.html', extensions: ['html'] }))
+    app.use(
+      express.static(resolve(cfg.shellDir), {
+        index: 'index.html',
+        extensions: ['html'],
+        setHeaders: (res, filePath) => {
+          // HTML must revalidate on every navigation and the hashed bundles
+          // it references are immutable — a deploy must never strand a
+          // browser-cached page on asset URLs that stopped existing.
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache')
+          } else if (filePath.includes(`${sep}assets${sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+          }
+        },
+      }),
+    )
   }
 
   // CheckFileInfo
