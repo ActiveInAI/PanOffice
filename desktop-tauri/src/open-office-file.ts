@@ -1,4 +1,4 @@
-import { isTauri, platform } from './bridge/platform'
+import { isTauri, platform, writeFileDeferred } from './bridge/platform'
 import { resetPendingDocumentSource } from './bridge/desktop-api'
 import { resetPendingPdfSource } from './bridge/pdf-api'
 import { resetPendingWorkbookSource } from './bridge/sheets-api'
@@ -27,19 +27,42 @@ function filesBase(): string {
   )
 }
 
+/** Byte counts as a compact progress figure: `2.1/5.6MB`. */
+function progressMb(done: number, total: number): string {
+  const mb = (n: number) => (n / 1048576).toFixed(1)
+  return `${mb(done)}/${mb(total)}MB`
+}
+
 /**
  * Persist picked bytes in the WOPI host's file store and resolve the
  * authorized contents URL for them; null when this deployment has no store.
+ * Upload runs over XHR so a slow uplink shows real progress instead of a
+ * silent stall.
  */
-async function uploadToServerStore(name: string, bytes: Uint8Array): Promise<string | null> {
+async function uploadToServerStore(
+  name: string,
+  bytes: Uint8Array,
+  onProgress?: (message: string) => void,
+): Promise<string | null> {
   const base = filesBase()
   try {
-    const uploaded = await fetch(`${base}/upload?name=${encodeURIComponent(name)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: bytes as unknown as BodyInit,
+    const uploaded = await new Promise<boolean>((resolveUpload) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${base}/upload?name=${encodeURIComponent(name)}`)
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+      xhr.timeout = 300_000
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.floor((event.loaded / event.total) * 100)
+          onProgress?.(`上传中 ${percent}%（${progressMb(event.loaded, event.total)}）`)
+        }
+      }
+      xhr.onload = () => resolveUpload(xhr.status >= 200 && xhr.status < 300)
+      xhr.onerror = () => resolveUpload(false)
+      xhr.ontimeout = () => resolveUpload(false)
+      xhr.send(bytes as unknown as XMLHttpRequestBodyInit)
     })
-    if (!uploaded.ok) return null
+    if (!uploaded) return null
     const listing = await fetch(`${base}/files.json`)
     if (!listing.ok) return null
     const files = (await listing.json()) as { name: string; contentUrl?: string }[]
@@ -72,7 +95,10 @@ export function pickOfficeFile(): Promise<File | null> {
   })
 }
 
-export async function openOfficeFile(file: File): Promise<void> {
+export async function openOfficeFile(
+  file: File,
+  onProgress?: (message: string) => void,
+): Promise<void> {
   const ext = extensionOf(file.name)
   const route = OFFICE_ROUTES[ext]
   if (!route) throw new Error(`unsupported file type: .${ext || '?'} (${OFFICE_FILE_ACCEPT})`)
@@ -80,21 +106,28 @@ export async function openOfficeFile(file: File): Promise<void> {
   const safeName = file.name.replace(/^.*[\\/]/, '')
   const bytes = new Uint8Array(await file.arrayBuffer())
 
-  // Web shells persist the document in the server file store and open it
-  // through its contents URL: bytes parked only in this browser's IndexedDB
-  // disappear for every other device (and after a storage wipe), which used
-  // to reopen as a silent blank editor.
+  // Web shells persist the document in the server file store — bytes parked
+  // only in this browser's IndexedDB disappear for every other device — but
+  // how much of that the user waits for depends on where the engine runs:
+  //  - docx/pdf/pptx render in the browser and the picked bytes are already
+  //    here: open instantly, sync to the store in the background.
+  //  - xlsx parses on the server: the upload must finish first (1× raw bytes,
+  //    then the host stages it in place), so it reports real progress.
   let src = `local/${safeName}`
   let recent: Omit<RecentEntry, 'ts'> = { key: src, name: safeName, ext }
-  const contentUrl = isTauri() ? null : await uploadToServerStore(safeName, bytes)
-  if (contentUrl !== null) {
-    src = contentUrl
-    recent = { key: `server:${safeName}`, name: safeName, ext, contentUrl }
-  } else {
-    if (!isTauri()) {
-      console.warn(`[open-office-file] file store unavailable — ${safeName} stays browser-local`)
-    }
+  if (isTauri()) {
     await platform.writeFile(src, bytes)
+  } else if (route === 'sheets') {
+    const contentUrl = await uploadToServerStore(safeName, bytes, onProgress)
+    if (contentUrl !== null) {
+      src = contentUrl
+      recent = { key: `server:${safeName}`, name: safeName, ext, contentUrl }
+    } else {
+      console.warn(`[open-office-file] file store unavailable — ${safeName} stays browser-local`)
+      await platform.writeFile(src, bytes)
+    }
+  } else {
+    await writeFileDeferred(src, bytes)
   }
   pushRecent(recent)
 

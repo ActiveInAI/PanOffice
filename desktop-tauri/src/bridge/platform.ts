@@ -84,8 +84,30 @@ async function fetchServerListing(base: string): Promise<ServerListedFile[] | nu
   }
 }
 
+/**
+ * Documents whose overlay bytes are newer than the store copy: written via
+ * writeFileDeferred and still syncing. Reads must not resurrect the stale
+ * server copy in this window (same-tab only, which is where the open runs).
+ */
+const locallyNewer = new Set<string>()
+
+/**
+ * Park bytes in the overlay now and push them to the store in the
+ * background. Pick-to-open flows use this for the client-side engines
+ * (docx/pdf/pptx render in the browser): the document opens immediately
+ * instead of waiting a slow uplink, and durability catches up behind it.
+ */
+export async function writeFileDeferred(path: string, bytes: Uint8Array): Promise<void> {
+  await idbPut(path, bytes)
+  locallyNewer.add(path)
+  void writeThroughServerDoc(path, bytes)
+    .catch((err) => console.warn('[platform] background store sync failed:', err))
+    .finally(() => locallyNewer.delete(path))
+}
+
 /** Store copy of a `local/` document; null when absent or no store. */
 async function readServerDoc(path: string): Promise<Uint8Array | null> {
+  if (locallyNewer.has(path)) return null
   const name = serverIdForLocalKey(path)
   if (name === null) return null
   const base = filesBase()

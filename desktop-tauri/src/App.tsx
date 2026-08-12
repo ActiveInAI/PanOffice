@@ -795,7 +795,7 @@ function HomeNavButton({
 function Home() {
   const [recents, setRecents] = useState<RecentEntry[]>(loadRecents)
   const localInputRef = useRef<HTMLInputElement>(null)
-  const [opening, setOpening] = useState(false)
+  const [opening, setOpening] = useState<string | null>(null)
   const [activeNav, setActiveNav] = useState('home')
   const homeRef = useRef<HTMLElement>(null)
   const newRef = useRef<HTMLElement>(null)
@@ -837,13 +837,13 @@ function Home() {
   }
 
   const onPickLocal = async (file: File): Promise<void> => {
-    setOpening(true)
+    setOpening('打开中…')
     try {
-      await openOfficeFile(file)
+      await openOfficeFile(file, setOpening)
     } catch (error) {
       alert(error instanceof Error ? error.message : String(error))
     } finally {
-      setOpening(false)
+      setOpening(null)
     }
   }
 
@@ -911,7 +911,9 @@ function Home() {
         <section ref={newRef} style={{ scrollMarginTop: 20 }}>
           <NewDocCards onOpenLocal={() => localInputRef.current?.click()} />
         </section>
-        {opening && <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>打开中…</p>}
+        {opening !== null && (
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>{opening}</p>
+        )}
 
         <div ref={serverRef} style={{ scrollMarginTop: 20 }}>
           <ServerFiles
