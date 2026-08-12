@@ -7,6 +7,7 @@ import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { AiPanel, PanAiMark } from './ai/AiPanel'
 import { pickAndOpenOfficeFile } from '../../../open-office-file'
+import { wopiDisplayName } from '../../../server-files'
 import type { PdfAiDeps } from './ai/tools'
 import {
   MARKUP_COLORS,
@@ -774,7 +775,8 @@ export default function App() {
       spread === 1 ? visIdx : visIdx === 0 ? 0 : Math.floor((visIdx - 1) / 2) + 1,
     [spread],
   )
-  const fileName = filePath.split(/[\\/]/).pop() ?? filePath
+  // WOPI contents URLs carry the real name in their id, not the last segment
+  const fileName = wopiDisplayName(filePath) ?? filePath.split(/[\\/]/).pop() ?? filePath
 
   const rotDelta = useCallback((origIdx: number) => rotations.get(origIdx) ?? 0, [rotations])
   /** Page geometry: unrotated size + total display rotation; the single entry point for overlay coord conversion */

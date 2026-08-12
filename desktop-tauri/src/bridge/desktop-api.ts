@@ -31,6 +31,7 @@ import type {
   PickImageResult,
 } from '../apps/docs/shared/ipc'
 import { ATTACHMENT_IMAGE_EXTS } from '../apps/docs/shared/ipc'
+import { wopiDisplayName } from '../server-files'
 import { createAiBridge } from './ai-stream'
 import { isTauri, platform } from './platform'
 
@@ -114,11 +115,12 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
 
 const basename = (path: string): string => path.split(/[\\/]/).pop() ?? path
 
-/** Display name for a path or URL: basename minus query; a WOPI …/<name>/contents?… URL yields <name>. */
+/** Display name for a path or URL: basename minus query; a WOPI …/<name>/contents?… URL yields the decoded <name>. */
 const displayName = (path: string): string => {
+  const wopi = wopiDisplayName(path)
+  if (wopi !== null) return wopi
   const parts = (path.split(/[?#]/)[0] ?? '').split(/[\\/]/).filter((p) => p.length > 0)
-  const last = parts[parts.length - 1] ?? basename(path)
-  return last === 'contents' && parts.length >= 2 ? (parts[parts.length - 2] ?? last) : last
+  return parts[parts.length - 1] ?? basename(path)
 }
 
 const extOf = (name: string): string => name.split('.').pop()?.toLowerCase() ?? ''

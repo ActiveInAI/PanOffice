@@ -94,8 +94,18 @@ export default defineConfig({
   preview: {
     // vite preview backs the headless e2e run; mirroring the dev proxy keeps
     // the same-origin file-store routes (files.json/upload/wopi) live there,
-    // like the wopi-host serving dist/ does in production.
-    proxy: sameOriginProxy(),
+    // like the wopi-host serving dist/ does in production. The one deviation:
+    // /xlsx-sidecar goes straight to the standalone sidecar server (the e2e
+    // wopi-host is spawned without an XLSX_RPC_URL), so a `build:web` bundle
+    // — whose sidecar URL is the same-origin proxy path — runs unmodified.
+    proxy: {
+      ...sameOriginProxy(),
+      '/xlsx-sidecar': {
+        target: process.env.PANOFFICE_PREVIEW_SIDECAR ?? 'http://127.0.0.1:8791',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/xlsx-sidecar/, ''),
+      },
+    },
   },
   build: {
     // tauri.conf.json frontendDist points at ../dist

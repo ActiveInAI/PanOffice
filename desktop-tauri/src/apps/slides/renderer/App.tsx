@@ -53,6 +53,7 @@ import type { ChartPresetDef, IconDef, SmartArtDef, WordArtPreset } from './inse
 import { t, useI18n } from './i18n/locale'
 import { AiPanel } from './ai/AiPanel'
 import { pickAndOpenOfficeFile } from '../../../open-office-file'
+import { wopiDisplayName } from '../../../server-files'
 import { ChartDataDialog } from './components/ChartDataDialog'
 import type { BrushFormat } from './format-brush'
 import { isTextUndoTarget, shouldRouteUndoToDeck } from './undo-routing'
@@ -512,7 +513,8 @@ export function App() {
       setStatus(
         result.path
           ? t('appStatusOpened', {
-              name: result.path.split('/').pop()!,
+              // WOPI contents URLs carry the name in their id segment
+              name: wopiDisplayName(result.path) ?? result.path.split('/').pop()!,
               count: result.slides.length,
             })
           : t('appStatusNewBlank'),

@@ -3,9 +3,17 @@
  * export, and printing. Each function takes the ActionCtx built fresh per call.
  */
 import type { RenderSlide } from '@genoffice/pptx-render'
+import { wopiDisplayName } from '../../../server-files'
 import type { ActionCtx } from './action-context'
 import { renderSlidesToPngBase64 } from './export-render'
 import { t } from './i18n/locale'
+
+/** Status/title name for a deck path — WOPI contents URLs carry the real
+ * file name in their id segment, not in the last path segment. */
+const deckName = (path: string | null | undefined): string | null => {
+  if (!path) return null
+  return wopiDisplayName(path) ?? path.split('/').pop() ?? null
+}
 
 /**
  * If a text box/table is still being edited on ⌘S/close-save, blur first so the
@@ -45,7 +53,7 @@ export async function save(ctx: ActionCtx): Promise<boolean> {
     if (r.slides) adoptSavedSlides(ctx, r.slides)
     if (r.path) ctx.setPath(r.path)
     ctx.setDirty(false)
-    ctx.setStatus(t('appStatusSaved', { name: r.path?.split('/').pop() ?? '' }))
+    ctx.setStatus(t('appStatusSaved', { name: deckName(r.path) ?? '' }))
   } else ctx.setStatus(t('appStatusSaveFailed', { error: r.error ?? t('appErrorCanceled') }))
   return r.ok
 }
@@ -53,19 +61,19 @@ export async function save(ctx: ActionCtx): Promise<boolean> {
 export async function saveAs(ctx: ActionCtx): Promise<void> {
   await flushActiveEdit(ctx)
   await ctx.flushNotes()
-  const name = ctx.path?.split('/').pop() ?? 'presentation.pptx'
+  const name = deckName(ctx.path) ?? 'presentation.pptx'
   const r = await window.slidesApi.saveAs(name)
   if (r.ok) {
     if (r.slides) adoptSavedSlides(ctx, r.slides)
     ctx.setPath(r.path ?? ctx.path)
     ctx.setDirty(false)
-    ctx.setStatus(t('appStatusSavedAs', { name: r.path?.split('/').pop() ?? '' }))
+    ctx.setStatus(t('appStatusSavedAs', { name: deckName(r.path) ?? '' }))
   }
 }
 
 /** Export base name: file name without the .pptx extension */
 export function exportBaseName(ctx: ActionCtx): string {
-  return (ctx.path?.split('/').pop() ?? t('appUntitledPresentation')).replace(/\.pptx$/i, '')
+  return (deckName(ctx.path) ?? t('appUntitledPresentation')).replace(/\.pptx$/i, '')
 }
 
 /** Export as images: each page (skipping hidden ones) rendered offscreen to 2x PNG, written to disk by the main process */
