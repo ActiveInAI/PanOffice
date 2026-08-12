@@ -18,7 +18,24 @@ export function isCollaboraPath(url: string): boolean {
   return PROXY_PREFIXES.some((prefix) => url.startsWith(prefix))
 }
 
+/**
+ * Collabora's first-run welcome slideshow. This build offers no switch for
+ * it (only home_mode, which also caps concurrency), and the overlay swallows
+ * the first clicks on a freshly opened document. PanOffice embeds the editor
+ * inside its own shell, so the tour is noise: answering 404 makes cool.js
+ * skip it, exactly as it does on a build without the asset.
+ */
+const WELCOME_PATH = /^\/browser\/[^/]+\/welcome\//
+
+export function isCollaboraWelcome(url: string): boolean {
+  return WELCOME_PATH.test(url.split('?')[0] ?? '')
+}
+
 export function proxyCollaboraHttp(internalUrl: string, req: Request, res: Response): void {
+  if (isCollaboraWelcome(req.originalUrl)) {
+    res.status(404).end()
+    return
+  }
   const upstream = new URL(internalUrl)
   const proxy = http.request(
     {
