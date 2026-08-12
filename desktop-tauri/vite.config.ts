@@ -8,8 +8,26 @@ import { viteStaticCopy } from 'vite-plugin-static-copy'
 const require = createRequire(import.meta.url)
 const rootDir = dirname(fileURLToPath(import.meta.url))
 const pdfjsRoot = dirname(dirname(require.resolve('pdfjs-dist/package.json')))
+const devPort = Number(process.env.PANOFFICE_DEV_PORT || '5190')
+const devFilesUpstream =
+  process.env.PANOFFICE_DEV_FILES_UPSTREAM || 'http://127.0.0.1:3210'
+const devServicesUpstream =
+  process.env.PANOFFICE_DEV_SERVICES_UPSTREAM || 'http://127.0.0.1:3210'
 // vite-plugin-static-copy globs require POSIX separators; join() breaks on Windows
 const pdfjsDir = (sub: string) => normalizePath(join(pdfjsRoot, 'pdfjs-dist', sub))
+
+if (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535) {
+  throw new Error('PANOFFICE_DEV_PORT must be a valid TCP port')
+}
+
+const devProxy = (target: string) => ({
+  target,
+  changeOrigin: true,
+  headers: {
+    origin: target,
+    referer: `${target}/`,
+  },
+})
 
 // The @genoffice/* workspace packages are consumed as source (their package
 // entries point at ./src/index.ts and they are not installed here).
@@ -57,14 +75,18 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5180,
+    port: devPort,
     strictPort: true,
     host: '127.0.0.1',
     proxy: {
-      // Development stays on this WSL host. The browser sees same-origin
-      // routes while WOPI keeps bridge credentials and native RPC private.
-      '/panai': 'http://127.0.0.1:3210',
-      '/xlsx-sidecar': 'http://127.0.0.1:3210',
+      // The browser sees same-origin routes while the configured WOPI host
+      // keeps file, AI and native-RPC endpoints behind the dev server.
+      '/files.json': devProxy(devFilesUpstream),
+      '/upload': devProxy(devFilesUpstream),
+      '/wopi': devProxy(devFilesUpstream),
+      '/panai': devProxy(devServicesUpstream),
+      '/xlsx-sidecar': devProxy(devServicesUpstream),
+      '/healthz': devProxy(devServicesUpstream),
     },
   },
   build: {

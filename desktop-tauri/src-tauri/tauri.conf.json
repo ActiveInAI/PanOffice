@@ -5,7 +5,7 @@
   "identifier": "com.panoffice.app",
   "build": {
     "beforeDevCommand": "npm run dev:ui",
-    "devUrl": "http://localhost:5180",
+    "devUrl": "http://localhost:5190",
     "frontendDist": "../dist"
   },
   "app": {

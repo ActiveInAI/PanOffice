@@ -2,9 +2,9 @@
 # Start the complete PanOffice development stack on this WSL host.
 #
 # Source, builds, tests, AI execution and runtime state stay local. The ARM
-# host at 192.168.1.100 is deliberately absent from this script and remains a
-# deployment target only. Existing deploy/data/files content and browser
-# localStorage recents are neither read nor copied.
+# host at 192.168.1.100 remains a deployment target: source and builds stay
+# local, while the browser dev proxy may read its deployed file API without
+# copying server files or browser localStorage recents.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,6 +17,8 @@ COOL_ROOT="${PANOFFICE_COOL_ROOT:-$HOME/panspace/online}"
 COOL_SYSROOT="${PANOFFICE_COOL_SYSROOT:-$HOME/.cool-sysroot/root}"
 ARCH_GPT_REPO="${ARCH_GPT_REPO:-$HOME/actions-runner/_work/arch-gpt/arch-gpt}"
 BRIDGE_SOURCE="${ARCH_GPT_BRIDGE_SOURCE:-$ARCH_GPT_REPO/tools/arch_gpt_cli_openai_bridge.mjs}"
+DEV_PORT="${PANOFFICE_DEV_PORT:-5190}"
+DEV_FILES_UPSTREAM="${PANOFFICE_DEV_FILES_UPSTREAM:-http://192.168.1.100:3210}"
 
 umask 077
 mkdir -p "$DATA_DIR" "$LOG_DIR" "$XLSX_STAGE_DIR" "$(dirname "$TOKEN_FILE")"
@@ -85,7 +87,7 @@ start_service panai 8790 "$ARCH_GPT_REPO" "$LOG_DIR/panai.log" \
   env \
     ARCH_GPT_CLI_BRIDGE_PORT=8790 \
     ARCH_GPT_CLI_BRIDGE_TOKEN_FILE="$TOKEN_FILE" \
-    ARCH_GPT_CLI_BRIDGE_ALLOWED_ORIGINS=http://127.0.0.1:3210,http://localhost:3210,http://127.0.0.1:5180,http://localhost:5180 \
+    ARCH_GPT_CLI_BRIDGE_ALLOWED_ORIGINS=http://127.0.0.1:3210,http://localhost:3210,http://127.0.0.1:5190,http://localhost:5190 \
     ARCH_GPT_CLI_BRIDGE_DISABLED_MODELS=glm-5.2 \
     ARCH_GPT_CODEX_BIN="$CODEX_BIN" \
     ARCH_GPT_CLAUDE_BIN="$CLAUDE_BIN" \
@@ -109,16 +111,20 @@ start_service wopi 3210 "$ROOT/server/wopi-host" "$LOG_DIR/wopi.log" \
     COLLABORA_PUBLIC_URL=http://127.0.0.1:9982 \
     WOPI_ALLOW_DEV_TOKEN=true \
     WOPI_DEV_UI_ENABLED=true \
-    PDF_APP_URL=http://127.0.0.1:5180 \
-    PDF_APP_ORIGIN=http://127.0.0.1:5180 \
+    PDF_APP_URL=http://127.0.0.1:5190 \
+    PDF_APP_ORIGIN=http://127.0.0.1:5190 \
     XLSX_RPC_URL=http://127.0.0.1:8791/rpc \
     PANAI_BRIDGE_URL=http://127.0.0.1:8790/v1 \
     PANAI_BRIDGE_TOKEN_FILE="$TOKEN_FILE" \
     PANAI_MODEL="${PANAI_MODEL:-gpt-5.6-sol}" \
     npm run dev
 
-start_service shell 5180 "$ROOT/desktop-tauri" "$LOG_DIR/shell.log" \
-  env VITE_XLSX_SIDECAR_URL=/xlsx-sidecar npm run dev:ui
+start_service shell "$DEV_PORT" "$ROOT/desktop-tauri" "$LOG_DIR/shell.log" \
+  env \
+    PANOFFICE_DEV_PORT="$DEV_PORT" \
+    PANOFFICE_DEV_FILES_UPSTREAM="$DEV_FILES_UPSTREAM" \
+    VITE_XLSX_SIDECAR_URL=/xlsx-sidecar \
+    npm run dev:ui
 
 [[ -x "$COOL_ROOT/coolwsd" ]] || { echo "local Collabora binary not found: $COOL_ROOT/coolwsd" >&2; exit 1; }
 start_service coolwsd 9982 "$COOL_ROOT" "$LOG_DIR/coolwsd.log" \
@@ -133,6 +139,7 @@ start_service coolwsd 9982 "$COOL_ROOT" "$LOG_DIR/coolwsd.log" \
       --o:welcome.enable=false
 
 echo
-echo "PanOffice local development: http://127.0.0.1:5180"
+echo "PanOffice local development: http://127.0.0.1:$DEV_PORT"
+echo "Deployed file API (proxied):  $DEV_FILES_UPSTREAM"
 echo "Local empty file store:      $DATA_DIR"
 echo "Logs:                       $LOG_DIR"

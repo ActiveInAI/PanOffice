@@ -18,7 +18,7 @@ import {
   removeRecent,
   type RecentEntry,
 } from './recent-files'
-import { resolveFilesBase } from './server-files'
+import { resolveFilesBase, resolveServerContentUrl } from './server-files'
 
 /**
  * PanOffice Tauri shell — unified on the GenOffice editors (M8).
@@ -76,7 +76,10 @@ function serverFileHref(name: string, contentUrl?: string): string | null {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   const route = OPEN_ROUTES[ext]
   if (!route) return null
-  const src = contentUrl ?? `${filesBase()}/wopi/files/${encodeURIComponent(name)}/contents?access_token=${encodeURIComponent(wopiToken())}`
+  const base = filesBase()
+  const src = contentUrl
+    ? resolveServerContentUrl(contentUrl, base, isTauri())
+    : `${base}/wopi/files/${encodeURIComponent(name)}/contents?access_token=${encodeURIComponent(wopiToken())}`
   return `#/${route}?src=${encodeURIComponent(src)}`
 }
 

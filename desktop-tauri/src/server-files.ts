@@ -6,9 +6,10 @@ function withoutTrailingSlash(value: string): string {
 }
 
 /**
- * Resolve the file-service base without making a remotely opened PanOffice page
- * call the viewer's own localhost. Native Tauri and local Vite development keep
- * using the local 3210 service; a remotely served shell defaults to its origin.
+ * Resolve the file-service base without making a web-opened PanOffice page call
+ * the viewer's own localhost. Web shells always default to their own origin so
+ * the production proxy and Vite dev proxy can route files consistently. Native
+ * Tauri keeps using the explicitly local 3210 service.
  */
 export function resolveFilesBase(
   configured: string | null,
@@ -22,23 +23,50 @@ export function resolveFilesBase(
     // A malformed page URL can only occur in a non-browser test/runtime.
   }
 
-  const localWebDev =
-    page !== null && LOOPBACK_HOSTS.has(page.hostname) && page.port !== '3210'
-  const fallback = nativeTauri || page === null || !/^https?:$/.test(page.protocol) || localWebDev
-    ? LOCAL_FILES_ORIGIN
-    : page.origin
+  const webOrigin =
+    page !== null && !nativeTauri && /^https?:$/.test(page.protocol)
+      ? page.origin
+      : null
+  const fallback = webOrigin ?? LOCAL_FILES_ORIGIN
 
   const raw = configured?.trim()
   if (!raw) return withoutTrailingSlash(fallback)
 
   try {
     const candidate = new URL(raw, fallback)
-    const remotePage = page !== null && !LOOPBACK_HOSTS.has(page.hostname)
-    if (remotePage && LOOPBACK_HOSTS.has(candidate.hostname)) {
+    const staleWebLoopback =
+      webOrigin !== null &&
+      LOOPBACK_HOSTS.has(candidate.hostname) &&
+      candidate.port === '3210' &&
+      candidate.origin !== webOrigin
+    if (staleWebLoopback) {
       return withoutTrailingSlash(fallback)
     }
     return withoutTrailingSlash(candidate.toString())
   } catch {
     return withoutTrailingSlash(fallback)
+  }
+}
+
+/**
+ * WOPI listings may contain an absolute deployment URL. Web shells route that
+ * URL back through their selected file-service origin so local development and
+ * public-domain access stay same-origin. Native Tauri retains the server URL.
+ */
+export function resolveServerContentUrl(
+  contentUrl: string,
+  filesBase: string,
+  nativeTauri = false,
+): string {
+  if (nativeTauri) return contentUrl
+  try {
+    const base = new URL(filesBase)
+    const content = new URL(contentUrl, base)
+    if (!/^https?:$/.test(base.protocol) || !/^https?:$/.test(content.protocol)) {
+      return contentUrl
+    }
+    return `${base.origin}${content.pathname}${content.search}${content.hash}`
+  } catch {
+    return contentUrl
   }
 }
