@@ -2717,6 +2717,7 @@ export function App(): React.JSX.Element {
   async function handleInspectWorkbook(): Promise<void> {
     if (workbookOpeningRef.current) return
     workbookOpeningRef.current = true
+    const routeOpen = pendingInitialOpenRef.current
     try {
       if (pendingInitialOpenRef.current) {
         pendingInitialOpenRef.current = false
@@ -2732,7 +2733,11 @@ export function App(): React.JSX.Element {
       }
       await pickAndOpenOfficeFile()
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : t('appOpenFailed'))
+      const message = error instanceof Error ? error.message : t('appOpenFailed')
+      setMessage(message)
+      // A route-driven open (#/sheets?src=…) has no picker the user just
+      // dismissed; without a dialog the failure reads as an empty workbook.
+      if (routeOpen) window.alert(`${t('appOpenFailed')} ${message}`)
     } finally {
       workbookOpeningRef.current = false
     }

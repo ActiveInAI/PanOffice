@@ -1,8 +1,10 @@
-import { platform } from './bridge/platform'
+import { isTauri, platform } from './bridge/platform'
 import { resetPendingDocumentSource } from './bridge/desktop-api'
 import { resetPendingPdfSource } from './bridge/pdf-api'
 import { resetPendingWorkbookSource } from './bridge/sheets-api'
 import { resetPendingSlidesSource } from './bridge/slides-api'
+import { pushRecent, type RecentEntry } from './recent-files'
+import { resolveFilesBase, resolveServerContentUrl } from './server-files'
 
 export const OFFICE_FILE_ACCEPT = '.docx,.xlsx,.pptx,.pdf'
 
@@ -13,32 +15,39 @@ export const OFFICE_ROUTES: Readonly<Record<string, 'docs' | 'sheets' | 'slides'
   pdf: 'pdf',
 }
 
-interface RecentOfficeFile {
-  key: string
-  name: string
-  ext: string
-  ts: number
-}
-
-const RECENTS_KEY = 'panoffice.recents'
-
 function extensionOf(name: string): string {
   return name.split('.').pop()?.toLowerCase() ?? ''
 }
 
-function rememberLocalFile(key: string, file: File, ext: string): void {
-  let previous: RecentOfficeFile[] = []
+function filesBase(): string {
+  return resolveFilesBase(
+    localStorage.getItem('panoffice.filesUrl'),
+    window.location.href,
+    isTauri(),
+  )
+}
+
+/**
+ * Persist picked bytes in the WOPI host's file store and resolve the
+ * authorized contents URL for them; null when this deployment has no store.
+ */
+async function uploadToServerStore(name: string, bytes: Uint8Array): Promise<string | null> {
+  const base = filesBase()
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]')
-    if (Array.isArray(parsed)) previous = parsed as RecentOfficeFile[]
+    const uploaded = await fetch(`${base}/upload?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: bytes as unknown as BodyInit,
+    })
+    if (!uploaded.ok) return null
+    const listing = await fetch(`${base}/files.json`)
+    if (!listing.ok) return null
+    const files = (await listing.json()) as { name: string; contentUrl?: string }[]
+    const contentUrl = files.find((file) => file.name === name)?.contentUrl
+    return contentUrl ? resolveServerContentUrl(contentUrl, base) : null
   } catch {
-    // A damaged recent-files cache must never block opening a real document.
+    return null
   }
-  const next = [
-    { key, name: file.name, ext, ts: Date.now() },
-    ...previous.filter((entry) => entry.key !== key),
-  ].slice(0, 30)
-  localStorage.setItem(RECENTS_KEY, JSON.stringify(next))
 }
 
 /**
@@ -69,11 +78,27 @@ export async function openOfficeFile(file: File): Promise<void> {
   if (!route) throw new Error(`unsupported file type: .${ext || '?'} (${OFFICE_FILE_ACCEPT})`)
 
   const safeName = file.name.replace(/^.*[\\/]/, '')
-  const key = `local/${safeName}`
-  await platform.writeFile(key, new Uint8Array(await file.arrayBuffer()))
-  rememberLocalFile(key, file, ext)
+  const bytes = new Uint8Array(await file.arrayBuffer())
 
-  let href = `#/${route}?src=${encodeURIComponent(key)}`
+  // Web shells persist the document in the server file store and open it
+  // through its contents URL: bytes parked only in this browser's IndexedDB
+  // disappear for every other device (and after a storage wipe), which used
+  // to reopen as a silent blank editor.
+  let src = `local/${safeName}`
+  let recent: Omit<RecentEntry, 'ts'> = { key: src, name: safeName, ext }
+  const contentUrl = isTauri() ? null : await uploadToServerStore(safeName, bytes)
+  if (contentUrl !== null) {
+    src = contentUrl
+    recent = { key: `server:${safeName}`, name: safeName, ext, contentUrl }
+  } else {
+    if (!isTauri()) {
+      console.warn(`[open-office-file] file store unavailable — ${safeName} stays browser-local`)
+    }
+    await platform.writeFile(src, bytes)
+  }
+  pushRecent(recent)
+
+  let href = `#/${route}?src=${encodeURIComponent(src)}`
   // Each renderer consumes a source only once. Reset its guard before routing
   // so File > Open can switch formats without a costly full page reload.
   if (route === 'docs') resetPendingDocumentSource()

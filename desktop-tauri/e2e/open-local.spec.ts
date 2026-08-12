@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test'
 test('home open-local routes a pdf to the pdf editor', async ({ page }) => {
   await page.goto('/#/')
   await page.getByTestId('open-local-input').setInputFiles('public/fixtures/hello.pdf')
-  await expect(page).toHaveURL(/#\/pdf\?src=local%2Fhello\.pdf/)
+  await expect(page).toHaveURL(/#\/pdf\?src=[^&]*hello\.pdf/)
   await expect(page.locator('.textLayer').first()).toContainText('Hello PanOffice', {
     timeout: 30_000,
   })
@@ -16,7 +16,7 @@ test('home open-local routes a pdf to the pdf editor', async ({ page }) => {
 test('home open-local routes a docx to the docs editor', async ({ page }) => {
   await page.goto('/#/')
   await page.getByTestId('open-local-input').setInputFiles('public/fixtures/simple.docx')
-  await expect(page).toHaveURL(/#\/docs\?src=local%2Fsimple\.docx/)
+  await expect(page).toHaveURL(/#\/docs\?src=[^&]*simple\.docx/)
   // docs canvas renders the fixture's paragraphs
   await expect(page.locator('body')).toContainText('第二段', { timeout: 30_000 })
 })

@@ -282,6 +282,26 @@ async function makeBlankPptx(): Promise<Uint8Array> {
   throw new Error('handled-by-route')
 }
 
+/**
+ * First untitled name neither the file store nor this browser's recents
+ * hold. `local/` writes go through to the shared store, where a fixed name
+ * would overwrite another device's blank document of the same name.
+ */
+async function untitledName(ext: string): Promise<string> {
+  const taken = new Set(loadRecents().map((entry) => entry.name))
+  try {
+    const res = await fetch(`${filesBase()}/files.json`)
+    if (res.ok) {
+      for (const file of (await res.json()) as ServerFile[]) taken.add(file.name)
+    }
+  } catch {
+    // no reachable store — browser-local naming is collision-free
+  }
+  let name = `未命名.${ext}`
+  for (let i = 2; taken.has(name); i += 1) name = `未命名 ${i}.${ext}`
+  return name
+}
+
 function NewDocCards({ onOpenLocal }: { onOpenLocal: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const create = async (c: NewCard): Promise<void> => {
@@ -293,7 +313,7 @@ function NewDocCards({ onOpenLocal }: { onOpenLocal: () => void }) {
         return
       }
       const bytes = await c.make()
-      const key = `local/未命名.${c.ext}`
+      const key = `local/${await untitledName(c.ext)}`
       await platform.writeFile(key, bytes)
       // Route directly into the matching editor. The shell resets its
       // one-shot source guard before changing the hash, so this does not tear

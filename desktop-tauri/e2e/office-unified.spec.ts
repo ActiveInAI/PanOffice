@@ -157,24 +157,24 @@ test('every editor File > Open switches directly to the selected Office format',
 
   // Word -> PowerPoint
   await chooseFromFileMenu(page, 'public/fixtures/hello.pptx')
-  await expect(page).toHaveURL(/#\/slides\?src=local%2Fhello\.pptx/)
+  await expect(page).toHaveURL(/#\/slides\?src=[^&]*hello\.pptx/)
   await expect.poll(() => slideText(page), { timeout: 30_000 }).toContain('Hello PanOffice')
 
   // PowerPoint -> PDF
   await chooseFromFileMenu(page, 'public/fixtures/hello.pdf')
-  await expect(page).toHaveURL(/#\/pdf\?src=local%2Fhello\.pdf/)
+  await expect(page).toHaveURL(/#\/pdf\?src=[^&]*hello\.pdf/)
   await expect(page.locator('.textLayer').first()).toContainText('Hello PanOffice', {
     timeout: 30_000,
   })
 
   // PDF -> Excel
   await chooseFromFileMenu(page, 'public/fixtures/hello.xlsx')
-  await expect(page).toHaveURL(/#\/sheets\?src=local%2Fhello\.xlsx/)
+  await expect(page).toHaveURL(/#\/sheets\?src=[^&]*hello\.xlsx/)
   await expect(page.locator('#univer-container canvas').first()).toBeVisible({ timeout: 30_000 })
   await expect.poll(() => excelA1DarkPixels(page), { timeout: 30_000 }).toBeGreaterThan(50)
 
   // Excel -> Word
   await chooseFromFileMenu(page, 'public/fixtures/simple.docx')
-  await expect(page).toHaveURL(/#\/docs\?src=local%2Fsimple\.docx/)
+  await expect(page).toHaveURL(/#\/docs\?src=[^&]*simple\.docx/)
   await expect(page.locator('body')).toContainText('第二段', { timeout: 30_000 })
 })

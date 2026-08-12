@@ -49,6 +49,7 @@ import {
 } from '../apps/sheets/gateway/xlsx-package-io'
 import { parsePivotDefinition } from '../apps/sheets/gateway/xlsx-pivot'
 import type { SheetEditPlan } from '../apps/sheets/gateway/xlsx-sheets'
+import { wopiDisplayName } from '../server-files'
 import { createAiBridge } from './ai-stream'
 import { isTauri, platform } from './platform'
 import {
@@ -146,6 +147,11 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 
 const basename = (path: string): string => path.split(/[\\/]/).pop() ?? path
+
+/** Name an editor surface shows for a logical path — WOPI contents URLs
+ * carry the real file name in their id segment, not in the last segment. */
+const displayNameOf = (logicalPath: string): string =>
+  wopiDisplayName(logicalPath) ?? basename(logicalPath)
 
 const extOf = (name: string): string => name.split('.').pop()?.toLowerCase() ?? ''
 
@@ -277,7 +283,7 @@ async function openStagedWorkbook(
   // logical name (a staged temp name would leak otherwise).
   return parseWorkbookFile({
     ...opened,
-    name: basename(logicalPath),
+    name: displayNameOf(logicalPath),
     path: logicalPath,
     sha256: digest,
     readOnly: false,
@@ -671,7 +677,7 @@ async function saveWorkbookEdits(request: unknown): Promise<WorkbookSaveResult> 
     }
     // Browser fallback: the suggested name wins; bytes are downloaded AND
     // persisted in the overlay so the saved-as file is reopenable in-session.
-    targetLogical = basename(session.suggestSaveAs ?? session.logicalPath)
+    targetLogical = displayNameOf(session.suggestSaveAs ?? session.logicalPath)
     if (!targetLogical.endsWith('.xlsx')) targetLogical = `${targetLogical}.xlsx`
   }
 

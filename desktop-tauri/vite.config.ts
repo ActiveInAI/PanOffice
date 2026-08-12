@@ -29,6 +29,17 @@ const devProxy = (target: string) => ({
   },
 })
 
+// The browser sees same-origin routes while the configured WOPI host keeps
+// file, AI and native-RPC endpoints behind the dev (or preview) server.
+const sameOriginProxy = () => ({
+  '/files.json': devProxy(devFilesUpstream),
+  '/upload': devProxy(devFilesUpstream),
+  '/wopi': devProxy(devFilesUpstream),
+  '/panai': devProxy(devServicesUpstream),
+  '/xlsx-sidecar': devProxy(devServicesUpstream),
+  '/healthz': devProxy(devServicesUpstream),
+})
+
 // The @genoffice/* workspace packages are consumed as source (their package
 // entries point at ./src/index.ts and they are not installed here).
 const genoffice = (name: string, entry = 'index.ts') =>
@@ -78,16 +89,13 @@ export default defineConfig({
     port: devPort,
     strictPort: true,
     host: '127.0.0.1',
-    proxy: {
-      // The browser sees same-origin routes while the configured WOPI host
-      // keeps file, AI and native-RPC endpoints behind the dev server.
-      '/files.json': devProxy(devFilesUpstream),
-      '/upload': devProxy(devFilesUpstream),
-      '/wopi': devProxy(devFilesUpstream),
-      '/panai': devProxy(devServicesUpstream),
-      '/xlsx-sidecar': devProxy(devServicesUpstream),
-      '/healthz': devProxy(devServicesUpstream),
-    },
+    proxy: sameOriginProxy(),
+  },
+  preview: {
+    // vite preview backs the headless e2e run; mirroring the dev proxy keeps
+    // the same-origin file-store routes (files.json/upload/wopi) live there,
+    // like the wopi-host serving dist/ does in production.
+    proxy: sameOriginProxy(),
   },
   build: {
     // tauri.conf.json frontendDist points at ../dist

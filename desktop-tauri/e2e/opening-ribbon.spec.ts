@@ -36,11 +36,11 @@ test('switching Word, PowerPoint and PDF files stays in the same document reques
   }
 
   await openFromMenu('public/fixtures/hello.pptx')
-  await expect(page).toHaveURL(/#\/slides\?src=local%2Fhello\.pptx/)
+  await expect(page).toHaveURL(/#\/slides\?src=[^&]*hello\.pptx/)
   await expect(page.getByTestId('panai-toggle')).toBeVisible({ timeout: 30_000 })
 
   await openFromMenu('public/fixtures/hello.pdf')
-  await expect(page).toHaveURL(/#\/pdf\?src=local%2Fhello\.pdf/)
+  await expect(page).toHaveURL(/#\/pdf\?src=[^&]*hello\.pdf/)
   await expect(page.locator('.textLayer').first()).toContainText('Hello PanOffice', { timeout: 30_000 })
 
   expect(documentRequests).toBe(1)

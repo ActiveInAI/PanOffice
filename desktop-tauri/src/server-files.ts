@@ -72,6 +72,20 @@ export function resolveServerContentUrl(
 }
 
 /**
+ * Human file name carried by a WOPI contents URL, or null for any other
+ * path. Editors show this instead of the URL's last segment (`contents?…`).
+ */
+export function wopiDisplayName(path: string): string | null {
+  const match = /\/wopi\/files\/([^/?#]+)\/contents(?:[?#]|$)/i.exec(path)
+  if (!match) return null
+  try {
+    return decodeURIComponent(match[1]!)
+  } catch {
+    return match[1]!
+  }
+}
+
+/**
  * Turn an authorized WOPI contents URL from the server listing into the
  * corresponding file-resource URL used by DELETE. Keeping the listing token
  * avoids silently falling back to a different deployment credential.
