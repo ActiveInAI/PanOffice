@@ -38,9 +38,13 @@ export function CollaboraApp() {
       const inner = frameRef.current?.contentDocument?.querySelector('iframe') as
         | HTMLIFrameElement
         | null
-      const ready = Boolean(
-        inner?.contentDocument?.querySelector('#toolbar-up, .notebookbar, #toolbar-wrapper'),
-      )
+      // A refused session still renders cool.html's chrome, so existence
+      // proves nothing: the toolbar only takes up space once the document
+      // session is live.
+      const toolbar = inner?.contentDocument?.querySelector(
+        '#toolbar-up, .notebookbar, #toolbar-wrapper',
+      ) as HTMLElement | null
+      const ready = Boolean(toolbar && toolbar.getBoundingClientRect().height > 0)
       if (ready) {
         window.clearInterval(timer)
         setStalled(false)
