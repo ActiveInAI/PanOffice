@@ -254,7 +254,8 @@ export function App() {
   const bootHandledRef = useRef(false)
   const [_recent, setRecent] = useState<string[]>([])
   const [settings, setSettings] = useState<AiSettings>(DEFAULT_SETTINGS)
-  const [showAi, setShowAi] = useState(() => localStorage.getItem('aidocs.showAi') !== '0')
+  // Collapsed by default; only an explicit earlier opt-in reopens the panel.
+  const [showAi, setShowAi] = useState(() => localStorage.getItem('aidocs.showAi') === '1')
   /** Increments on every open/new document: AiPanel remounts by key to reset the conversation and history (save path changes don't bump it, so the session continues) */
   const [aiPanelKey, setAiPanelKey] = useState(0)
   const [ribbonTabRequest, setRibbonTabRequest] = useState<{ tab: string; nonce: number } | null>(

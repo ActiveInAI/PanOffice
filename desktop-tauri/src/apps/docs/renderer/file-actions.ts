@@ -284,7 +284,8 @@ export async function newFile(ctx: FileActionContext): Promise<boolean | undefin
     ctx.setProtectionDirty(false)
     ctx.setCompareResult(null)
     ctx.dirtyRef.current = false
-    ctx.setShowAi(true)
+    // The PanAI panel stays collapsed by default in every editor; the status
+    // line still points at it and the ribbon button opens it on demand.
     ctx.setStatus(t('appNewDocCreated'))
     return true
   } catch (err) {

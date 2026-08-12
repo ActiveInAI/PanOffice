@@ -270,7 +270,8 @@ export function ExcelShell({
   const [activeTab, setActiveTab] = useState<RibbonTab>('Home')
   const [fileOpen, setFileOpen] = useState(false)
   const fileMenuRef = useRef<HTMLDivElement>(null)
-  const [isCopilotOpen, setIsCopilotOpen] = useState(true)
+  // PanAI panel starts collapsed in every editor; the ribbon button opens it.
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false)
   const [showFormatCells, setShowFormatCells] = useState(false)
   const [axisSizeTarget, setAxisSizeTarget] = useState<'row' | 'col' | null>(null)
   const [showLinkDialog, setShowLinkDialog] = useState(false)

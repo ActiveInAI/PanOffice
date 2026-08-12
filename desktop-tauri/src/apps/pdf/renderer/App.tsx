@@ -688,7 +688,8 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageInput, setPageInput] = useState('1')
   const [sidebar, setSidebar] = useState<'thumbs' | 'outline' | null>('thumbs')
-  const [aiCollapsed, setAiCollapsed] = useState(false)
+  // PanAI panel starts collapsed in every editor; the ribbon button opens it.
+  const [aiCollapsed, setAiCollapsed] = useState(true)
   const [spread, setSpread] = useState<1 | 2>(1)
   const [nightMode, setNightMode] = useState(false)
   const [outline, setOutline] = useState<OutlineNode[] | null>(null)

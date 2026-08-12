@@ -277,7 +277,8 @@ export function App() {
     localStorage.setItem('ai-slides-auto-save', autoSave ? '1' : '0')
     window.slidesApi.setAutoSavePref?.(autoSave)
   }, [autoSave])
-  const [showAi, setShowAi] = useState(() => localStorage.getItem('ai-slides-show-ai') !== '0')
+  // Collapsed by default; only an explicit earlier opt-in reopens the panel.
+  const [showAi, setShowAi] = useState(() => localStorage.getItem('ai-slides-show-ai') === '1')
   const [showFormat, setShowFormat] = useState(false)
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null)
   const [aiPreset, setAiPreset] = useState<{
