@@ -126,7 +126,9 @@ function saveStyleSidecar(data: {
 // ---- gsk / search stubs (need a Rust-side network proxy, TODO M3/M4) ----
 
 function aiGskStatus(_withEmail?: boolean): Promise<GenSparkAccountStatus> {
-  return Promise.resolve({ loggedIn: false })
+  // PanOffice runs on PanAI — there is no Genspark account in this product,
+  // so error handling must never offer the upstream sign-in call to action.
+  return Promise.resolve({ loggedIn: true })
 }
 
 function aiGskLogin(): Promise<void> {

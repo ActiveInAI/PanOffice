@@ -893,8 +893,9 @@ async function readLocalImage(request: unknown): Promise<{
 // ---- Genspark login / web search (need a Rust-side network proxy, M3) ----
 
 function aiGskStatus(_withEmail?: boolean): Promise<GenSparkAccountStatus> {
-  // TODO(M3): gsk auth state lives with the CLI on the host; no webview analog
-  return Promise.resolve({ loggedIn: false })
+  // PanOffice runs on PanAI — there is no Genspark account in this product,
+  // so error handling must never offer the upstream sign-in call to action.
+  return Promise.resolve({ loggedIn: true })
 }
 
 function aiGskLogin(): Promise<void> {
